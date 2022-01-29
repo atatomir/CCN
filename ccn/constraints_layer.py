@@ -7,9 +7,8 @@ from .constraints_group import ConstraintsGroup
 from .constraint import Constraint
 
 class ConstraintsLayer(nn.Module):
-    def __init__(self, constraints_group, num_classes):
+    def __init__(self, strata, num_classes):
         super(ConstraintsLayer, self).__init__()
-        strata = constraints_group.strata()
         modules = [ConstraintsModule(stratum, num_classes) for stratum in strata]
         self.module_list = nn.ModuleList(modules)
         

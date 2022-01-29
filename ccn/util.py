@@ -39,25 +39,32 @@ def test(dataloader, model, clayer, loss_fn):
     accuracy = ", ".join([f"{100 * rate:>0.1f}%" for rate in correct])
     print(f"Test Error: \n Accuracy: {accuracy}")
     print(f" Avg loss: {test_loss:>8f} \n")
+    return test_loss
 
-def draw_classes(model, draw = None):
-  dots = np.arange(0., 1., 0.01, dtype = "float32")
-  grid = torch.tensor([(x, y) for x in dots for y in dots])
-  preds = model(grid).detach()
+def draw_classes(model, draw = None, path=None):
+    dots = np.arange(0., 1., 0.01, dtype = "float32")
+    grid = torch.tensor([(x, y) for x in dots for y in dots])
+    preds = model(grid).detach()
 
-  classes = preds.shape[1]
-  fig, ax = plt.subplots(1, classes)
-  for i, ax in enumerate(ax):
-    image = preds[:, i].view((len(dots), len(dots)))
-    ax.imshow(
-        image, 
-        cmap='hot', 
-        interpolation='nearest', 
-        origin='lower', 
-        extent=(0., 1., 0., 1.),
-        vmin=0.,
-        vmax=1.
-    )
-    if draw != None: draw(ax, i)    
+    classes = preds.shape[1]
+    fig, ax = plt.subplots(1, classes)
+    for i, ax in enumerate(ax):
+        image = preds[:, i].view((len(dots), len(dots)))
+        ax.imshow(
+            image, 
+            cmap='hot', 
+            interpolation='nearest', 
+            origin='lower', 
+            extent=(0., 1., 0., 1.),
+            vmin=0.,
+            vmax=1.
+        )
+        if draw != None: draw(ax, i)    
 
-  plt.show()
+    if path == None:
+        plt.show()
+    else:
+        plt.savefig(path)
+
+
+
