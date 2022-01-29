@@ -43,7 +43,7 @@ def test(dataloader, model, clayer, loss_fn):
 
 def draw_classes(model, draw = None, path=None):
     dots = np.arange(0., 1., 0.01, dtype = "float32")
-    grid = torch.tensor([(x, y) for x in dots for y in dots])
+    grid = torch.tensor([(x, y) for y in dots for x in dots])
     preds = model(grid).detach()
 
     classes = preds.shape[1]
@@ -65,6 +65,7 @@ def draw_classes(model, draw = None, path=None):
         plt.show()
     else:
         plt.savefig(path)
+        plt.close()
 
 
 

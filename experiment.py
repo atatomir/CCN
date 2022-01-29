@@ -49,4 +49,4 @@ class Experiment:
     def save(self, dir='./'):
         path = self.experiment_path(dir)
         torch.save(self.model, path + ".pth")
-        self.draw_results(path)
+        self.draw_results(path=path)
