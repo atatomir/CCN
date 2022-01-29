@@ -1,4 +1,5 @@
 import torch
+import pytest
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -20,6 +21,7 @@ def train(dataloader, model, clayer, loss_fn, optimizer):
             loss, current = loss.item(), batch * len(X)
             print(f"loss: {loss:>7f} [{current:>5d}/{size:>5d}]")
 
+@pytest.mark.skip(reason="this is not a test")
 def test(dataloader, model, clayer, loss_fn):
     size = len(dataloader.dataset)
     model.eval()
@@ -35,7 +37,7 @@ def test(dataloader, model, clayer, loss_fn):
     correct /= size
 
     accuracy = ", ".join([f"{100 * rate:>0.1f}%" for rate in correct])
-    print(f"Test Error: \n Accuracy: {accuracy}%")
+    print(f"Test Error: \n Accuracy: {accuracy}")
     print(f" Avg loss: {test_loss:>8f} \n")
 
 def draw_classes(model, draw = None):
@@ -47,6 +49,15 @@ def draw_classes(model, draw = None):
   fig, ax = plt.subplots(1, classes)
   for i, ax in enumerate(ax):
     image = preds[:, i].view((len(dots), len(dots)))
+    ax.imshow(
+        image, 
+        cmap='hot', 
+        interpolation='nearest', 
+        origin='lower', 
+        extent=(0., 1., 0., 1.),
+        vmin=0.,
+        vmax=1.
+    )
     if draw != None: draw(ax, i)    
-    ax.imshow(image, cmap='hot', interpolation='nearest', origin='lower', extent=(0., 1., 0., 1.))
+
   plt.show()

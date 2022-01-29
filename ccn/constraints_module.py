@@ -12,8 +12,6 @@ class ConstraintsModule(nn.Module):
         pos_head, neg_head = head
         pos_body, neg_body = body
         
-        # TODO: Maybe combine pos/neg_head into head, same for body
-        # TODO: use +/-1 to signal positive negative, and transform [0, 1] -> [-1, 1]
         self.pos_head = torch.from_numpy(pos_head).float()
         self.neg_head = torch.from_numpy(neg_head).float()
         self.pos_body = torch.from_numpy(pos_body).float()
