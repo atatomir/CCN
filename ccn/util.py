@@ -41,7 +41,7 @@ def test(dataloader, model, clayer, loss_fn):
     print(f" Avg loss: {test_loss:>8f} \n")
     return test_loss
 
-def draw_classes(model, draw = None, path=None):
+def draw_classes(model, draw=None, path=None):
     dots = np.arange(0., 1., 0.01, dtype = "float32")
     grid = torch.tensor([(x, y) for y in dots for x in dots])
     preds = model(grid).detach()

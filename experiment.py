@@ -43,8 +43,9 @@ class Experiment:
         path1 = path + '.png' if path != None else None 
         path2 = path + "-constrained.png" if path != None else None
 
-        draw_classes(self.model, draw=(lambda ax, i: self.shapes[i].plot(ax)), path=path1)
-        draw_classes(lambda x: self.clayer(self.model(x)), draw=(lambda ax, i: self.shapes[i].plot(ax)), path=path2)
+        full = False
+        draw_classes(self.model, draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path1)
+        draw_classes(lambda x: self.clayer(self.model(x)), draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path2)
 
     def save(self, dir='./'):
         path = self.experiment_path(dir)
