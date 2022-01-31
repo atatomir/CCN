@@ -93,6 +93,8 @@ class ConstraintsModule(nn.Module):
         # batch x num: compute head lower and upper bounds
         pos_head_max = torch.max(body_min * pos_head, dim=1).values.float()
         neg_head_max = torch.max(body_min * neg_head, dim=1).values.float()
+        assert (pos_head_max <= 1 - neg_head_max).all()
+
         preds = torch.maximum(pos_head_max, torch.minimum(1 - neg_head_max, preds.squeeze()))
         return preds
         
@@ -103,15 +105,13 @@ class ConstraintsModule(nn.Module):
         # constraints with head satisfied (only with full body satisfied)
         active_constraints = self.satisfied_body_constraints(goal)
         preds = self.apply(preds, active_constraints=active_constraints)
-        
+
         # constraints with head not satisfied (only unsatisfied body literals)
         active_constraints = self.unsatisfied_head_constraints(goal)
         body_mask = self.unsatisfied_literals_mask(goal)
         preds = self.apply(preds, active_constraints=active_constraints, body_mask=body_mask)
-        
+
         return preds
-        
-        
 
 def test_constraints_module():
     group = ConstraintsGroup([
@@ -123,6 +123,36 @@ def test_constraints_module():
     ])
     cm = ConstraintsModule(group, 14)
     preds = torch.rand((1000, 14))
-    updated = cm(preds)
-    assert group.coherent_with(updated.numpy()).all()
+    updated = cm(preds).numpy()
+    assert group.coherent_with(updated).all()
+        
+def test_constraints_module_positive_goal(): 
+    group = ConstraintsGroup([
+        Constraint('0 :- 1 n2'),
+        Constraint('3 :- 4 n5'),
+        Constraint('n7 :- 7 n8'),
+        Constraint('n9 :- 10 n11')
+    ])
+
+    cm = ConstraintsModule(group, 12)
+    preds = torch.rand((1000, 12))
+    goal = torch.tensor([1., 1., 0., 1., 1., 1., 0., 1., 0., 0., 0., 0.]).unsqueeze(0).expand(1000, 12)
+    updated = cm(preds, goal=goal).numpy()
+    assert (group.coherent_with(updated).all(axis=0) == [True, False, True, False]).all()
+
+def test_constraints_module_negative_goal():
+    group = ConstraintsGroup([
+        Constraint('0 :- 1 n2 3 n4'),
+        Constraint('n5 :- 6 n7 8 n9')
+    ])
+    reduced_group = ConstraintsGroup([
+        Constraint('0 :- 1 n2'),
+        Constraint('n5 :- 6 n7')
+    ])
+
+    cm = ConstraintsModule(group, 10)
+    preds = torch.rand((1000, 10))
+    goal = torch.tensor([0., 0., 1., 1., 0., 1., 0., 1., 1., 0.]).unsqueeze(0).expand(1000, 10)
+    updated = cm(preds, goal=goal).numpy()
+    assert reduced_group.coherent_with(updated).all()
 

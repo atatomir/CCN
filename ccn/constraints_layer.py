@@ -17,16 +17,19 @@ class ConstraintsLayer(nn.Module):
             x = module(x, goal=goal)
         return x
 
+
 def test_constraints_module():
-    group = ConstraintsGroup([
-        Constraint('1 :- 0'),
-        Constraint('2 :- n3 4'),
-        Constraint('n5 :- 6 n7 8'),
-        Constraint('2 :- 9 n10'),
-        Constraint('n5 :- 11 n12 n13'),
+    group0 = ConstraintsGroup([
+        Constraint('n1 :- 0')
     ])
-    layer = ConstraintsLayer(group, 14)
-    preds = torch.rand((1000, 14))
+    group1 = ConstraintsGroup([
+        Constraint('2 :- 0'),
+        Constraint('n2 :- 1'),
+    ])
+    group = group0 + group1 
+
+    layer = ConstraintsLayer([group0, group1], 3)
+    preds = torch.rand((1000, 3))
     updated = layer(preds)
     assert group.coherent_with(updated.numpy()).all()
 

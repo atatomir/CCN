@@ -10,6 +10,9 @@ class ConstraintsGroup:
             # ConstraintGroup(string)
             with open(arg, 'r') as f:
                 self.constraints = [Constraint(line) for line in f]
+
+    def __add__(self, other):
+        return ConstraintsGroup(self.constraints + other.constraints)
                 
     def strata(self):
         # TODO: Implement stratification
@@ -70,3 +73,9 @@ def test_constraints_group_coherent_with():
         [[False,  True, False],
         [ True,  True, False],
         [ True, False,  True]])).all()
+
+def test_constraints_add():
+    group0 = ConstraintsGroup([Constraint('n0 :- 1 n2 3')])
+    group1 = ConstraintsGroup([Constraint('0 :- n1 n2 4')])
+    group = group0 + group1 
+    assert str(group) == f"{group0}\n{group1}"
