@@ -45,11 +45,8 @@ class ConstraintsModule(nn.Module):
     def unsatisfied_head_constraints(self, goal):
         batch, num, cons = self.dimensions(goal)
         
-        # batch x cons: compute constraints with pos heads
-        pos_cons = self.pos_head.sum(dim=1).unsqueeze(0).expand(batch, cons)
-        
         # batch x cons: compute constraints with head unsatisfied
-        pos_head = (1 - torch.matmul(goal, self.pos_head.t())) * pos_cons
+        pos_head = torch.matmul(1 - goal, self.pos_head.t())
         neg_head = torch.matmul(goal, self.neg_head.t())
         
         return pos_head + neg_head
