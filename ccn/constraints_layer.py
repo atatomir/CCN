@@ -18,7 +18,7 @@ class ConstraintsLayer(nn.Module):
         return x
 
 
-def test_constraints_module():
+def test_two_layers():
     group0 = ConstraintsGroup([
         Constraint('n1 :- 0')
     ])

@@ -52,18 +52,18 @@ class ConstraintsGroup:
     def __str__(self):
         return '\n'.join([str(constraint) for constraint in self.constraints])
 
-def test_constraints_group_str():
+def test_str():
     cons0 = Constraint('0 :- 1 n2')
     cons1 = Constraint('n0 :- 1')
     cons2 = Constraint('1 :- n2')
     group = ConstraintsGroup([cons0, cons1, cons2])
     assert str(group) == "0 :- 1 n2\nn0 :- 1\n1 :- n2"
 
-def test_constraints_group_from_file():
+def test_from_file():
     group = ConstraintsGroup('./constraints')
     assert str(group) == "0 :- 1 n2\nn0 :- 1\n1 :- n2"
 
-def test_constraints_group_coherent_with():
+def test_coherent_with():
     group = ConstraintsGroup('./constraints')
     assert (group.coherent_with(np.array([
         [0.1, 0.2, 0.3, 0.4],
@@ -74,7 +74,7 @@ def test_constraints_group_coherent_with():
         [ True,  True, False],
         [ True, False,  True]])).all()
 
-def test_constraints_add():
+def test_add():
     group0 = ConstraintsGroup([Constraint('n0 :- 1 n2 3')])
     group1 = ConstraintsGroup([Constraint('0 :- n1 n2 4')])
     group = group0 + group1 
