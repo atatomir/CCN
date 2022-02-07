@@ -23,7 +23,7 @@ class Clause:
         return iter(self.literals)
 
     def __eq__(self, other):
-        if not isinstance(other, Clause): return None
+        if not isinstance(other, Clause): return False
         return self.literals == other.literals
 
     def __hash__(self):

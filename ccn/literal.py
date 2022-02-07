@@ -22,6 +22,7 @@ class Literal:
         return hash((self.atom, self.positive))
 
     def __eq__(self, other):
+        if not isinstance(other, Literal): return False
         return self.atom == other.atom and self.positive == other.positive 
 
     def __lt__(self, other):

@@ -14,6 +14,7 @@ class ClausesGroup:
         return len(self.clauses)
 
     def __eq__(self, other):
+        if not isinstance(other, ClausesGroup): return False
         return self.clauses == other.clauses
 
     def __str__(self):
@@ -35,21 +36,21 @@ class ClausesGroup:
         resolution_clauses = set(resolution_clauses)
         next_clauses = ClausesGroup(other_clauses.union(resolution_clauses))
 
-        pos_constraints = [Constraint(pos, clause) for clause in pos_clauses]
-        neg_constraints = [Constraint(neg, clause) for clause in neg_clauses]
+        pos_constraints = [clause.fix_head(pos) for clause in pos_clauses]
+        neg_constraints = [clause.fix_head(neg) for clause in neg_clauses]
         constraints = ConstraintsGroup(pos_constraints + neg_constraints)
 
         return constraints, next_clauses
 
     def stratify(self, atoms):
         groups = []
-        clauses = self.clauses
+        clauses = self
 
         for atom in atoms:
             constraints, clauses = clauses.resolution(atom)
             if len(constraints): groups.append(constraints)
 
-        return groups
+        return groups[::-1]
 
 def test_eq():
     c1 = Clause('1 n2 3')
@@ -63,23 +64,37 @@ def test_resolution():
     c2 = Clause('1 n2 4')
     c3 = Clause('n1 4 n5')
     c4 = Clause('n1 2 6')
-    constraints, clauses = ClausesGroup([c1, c2, c3, c4]).resolution(1) 
-    print(constraints)
+    c5 = Clause('2 n3 4')
+    constraints, clauses = ClausesGroup([c1, c2, c3, c4, c5]).resolution(1) 
     print(clauses)
 
     assert constraints == ConstraintsGroup([
-        Constraint('1 :- n2 4'),
-        Constraint('1 :- 3 2')
+        Constraint('1 :- n2 n3'),
+        Constraint('1 :- 2 n4'),
+        Constraint('n1 :- n4 5'),
+        Constraint('n1 :- n2 n6')
     ])
 
-#         1 :- 1 n2 4
-# 1 :- 3 1 2
-# n1 :- n1 n5 4
-# n1 :- n1 6 2
-# 3 n5 2 4
-# 3 6 2
-# n5 n2 4
-    
+    assert clauses == ClausesGroup([
+        Clause('2 3 4 n5'),
+        Clause('2 3 6'),
+        Clause('n2 4 n5'),
+        Clause('4 2 n3')
+    ])
 
+def test_stratify():
+    constraints = ClausesGroup([
+        Clause('n0 n1'),
+        Clause('n1 2'),
+        Clause('1 n2')
+    ]).stratify([2, 1, 0])
+    assert len(constraints) == 2
+    assert constraints[0] == ConstraintsGroup([
+        Constraint('n1 :- 0')
+    ])
+    assert constraints[1] == ConstraintsGroup([
+        Constraint('2 :- 1'),
+        Constraint('n2 :- n1')
+    ])
 
-  
+## TODO: More testing
