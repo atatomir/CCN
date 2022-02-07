@@ -14,10 +14,7 @@ class Literal:
             else:
                 self.atom = int(plain)
                 self.positive = True
-            
-    def neg(self):
-        return Literal(self.atom, not self.positive)
-    
+                
     def __str__(self):
         return str(self.atom) if self.positive else 'n' + str(self.atom)
 
@@ -32,18 +29,22 @@ class Literal:
             return self.positive < other.positive
         else:
             return self.atom < other.atom
+            
+    def neg(self):
+        return Literal(self.atom, not self.positive)
+    
 
-def test_literal_init_and_str():
+def test_init_and_str():
     assert str(Literal('13')) == "13"
     assert str(Literal('n0')) == "n0"
     assert str(Literal('0')) == "0"
 
-def test_literal_neg():
+def test_neg():
     assert str(Literal('13').neg()) == 'n13'
     assert str(Literal('n0').neg()) == '0'
     assert str(Literal('0').neg()) == 'n0'
 
-def test_literal_comparison():
+def test_comparison():
     assert Literal('13').neg() == Literal('n13')
     assert Literal('13').neg() != Literal('n14')
     assert Literal('n13') < Literal('13')

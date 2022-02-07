@@ -13,10 +13,12 @@ class ConstraintsGroup:
 
     def __add__(self, other):
         return ConstraintsGroup(self.constraints + other.constraints)
-                
-    def strata(self):
-        # TODO: Implement stratification
-        return [self, self]
+
+    def __str__(self):
+        return '\n'.join([str(constraint) for constraint in self.constraints])
+
+    def __iter__(self):
+        return iter(self.constraints)
                 
     def head_encoded(self, num_classes):
         pos_head = []
@@ -49,8 +51,6 @@ class ConstraintsGroup:
         coherent = [constraint.coherent_with(preds) for constraint in self.constraints]
         return np.array(coherent).transpose()
             
-    def __str__(self):
-        return '\n'.join([str(constraint) for constraint in self.constraints])
 
 def test_str():
     cons0 = Constraint('0 :- 1 n2')

@@ -1,20 +1,12 @@
 import numpy as np
 from .literal import Literal
-from .clause import Clause
 
 class Constraint:
     def __init__(self, *args):
         if len(args) == 2:
-            if isinstance(args[1], list):
-                # Constraint(Literal, [Literal])
-                self.head = args[0]
-                self.body = set(args[1])
-            else:
-                # Constraint(Literal, Clause)
-                self.head = args[0] 
-                if not self.head in args[1]:
-                    raise Exception('Head not in clause')
-                self.body = {lit.neg() for lit in args[1] if lit != self.head}
+            # Constraint(Literal, [Literal])
+            self.head = args[0]
+            self.body = set(args[1])
         else:
             # Constraint(string)
             line = args[0].split(' ')
@@ -23,6 +15,13 @@ class Constraint:
             assert line[1] == ':-'
             self.head = Literal(line[0])
             self.body = {Literal(lit) for lit in line[2:]}
+
+    def __eq__(self, other):
+        if not isinstance(other, Constraint): return None
+        return self.head == other.head and self.body == other.body
+        
+    def __str__(self):
+        return str(self.head) + " :- " + ' '.join([str(lit) for lit in self.body])
             
     def head_encoded(self, num_classes):
         pos_head = np.zeros(num_classes)
@@ -58,15 +57,6 @@ class Constraint:
             head = 1 - head
             
         return body <= head
-
-    def clause(self):
-        return Clause([lit.neg() for lit in self.body] + [self.head])
-
-    def __eq__(self, other):
-        return self.head == other.head and self.body == other.body
-        
-    def __str__(self):
-        return str(self.head) + " :- " + ' '.join([str(lit) for lit in self.body])
     
 def test_str():
     assert str(Constraint(Literal('1'), [Literal('n0'), Literal("2")])) == "1 :- 2 n0" 
@@ -92,8 +82,3 @@ def test_coherent_with2():
       [0.8, 0.8, 0.3, 0.4],
       [0.9, 0.8, 0.3, 0.4],
   ])) == [True, True, False]).all()
-
-def test_clause():
-    assert Constraint('1 :- n2 3').clause() == Clause('1 2 n3')
-    assert Constraint('n1 :- n2 3').clause() != Clause('1 2 n3')
-    assert Constraint(Literal('2'), Clause('n1 2 n3 4')) == Constraint('2 :- 1 3 n4')
