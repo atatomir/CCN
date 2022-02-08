@@ -52,6 +52,7 @@ class ClausesGroup:
         return constraints, next_clauses
 
     def stratify(self, atoms):
+        ## TODO: Find best atoms order
         groups = []
         clauses = self
 
@@ -62,6 +63,7 @@ class ClausesGroup:
         if len(clauses):
             raise Exception("Unsatisfiable set of clauses")
 
+        ## TODO: Group constraints based on the topological order
         return groups[::-1]
 
     def coherent_with(self, preds):
