@@ -43,9 +43,6 @@ class ConstraintsModule(nn.Module):
     
     # Get the constraints whose head is not satisfied by goal
     def unsatisfied_head_constraints(self, goal):
-        batch, num, cons = self.dimensions(goal)
-        
-        # batch x cons: compute constraints with head unsatisfied
         pos_head = torch.matmul(1 - goal, self.pos_head.t())
         neg_head = torch.matmul(goal, self.neg_head.t())
         
