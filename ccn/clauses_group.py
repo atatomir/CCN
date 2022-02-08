@@ -1,4 +1,6 @@
-from ast import Constant
+from matplotlib.pyplot import cla
+import numpy as np
+import pytest
 from .literal import Literal
 from .clause import Clause
 from .constraint import Constraint
@@ -9,6 +11,7 @@ class ClausesGroup:
     def __init__(self, clauses):
         # ClausesGroup([Clause])
         self.clauses = frozenset(clauses)
+        self.clauses_list = clauses
 
     def __len__(self):
         return len(self.clauses)
@@ -22,6 +25,12 @@ class ClausesGroup:
 
     def __hash__(self):
         return hash(self.clauses)
+    
+    @classmethod 
+    def random(cls, max_clauses, num_classes):
+        clauses_count = np.random.randint(low=1, high=max_clauses)
+        clauses = [Clause.random(num_classes) for i in range(clauses_count)]
+        return cls(clauses)
 
     def resolution(self, atom):
         pos = Literal(atom, True)
@@ -50,7 +59,14 @@ class ClausesGroup:
             constraints, clauses = clauses.resolution(atom)
             if len(constraints): groups.append(constraints)
 
+        if len(clauses):
+            raise Exception("Unsatisfiable set of clauses")
+
         return groups[::-1]
+
+    def coherent_with(self, preds):
+        answer = [clause.coherent_with(preds) for clause in self.clauses_list]
+        return np.array(answer).transpose()
 
 def test_eq():
     c1 = Clause('1 n2 3')
@@ -97,4 +113,39 @@ def test_stratify():
         Constraint('n2 :- n1')
     ])
 
-## TODO: More testing
+def test_coherent_with():
+    clauses = ClausesGroup([ 
+        Clause('0 1 n2 n3'),
+        Clause('n0 1'),
+        Clause('0 n1'),
+        Clause('3 n3'),
+        Clause('n2 n3')
+    ])
+
+    preds = np.array([ 
+        [0.1, 0.2, 0.6, 0.7],
+        [0.4, 0.7, 0.2, 0.3],
+        [0.7, 0.2, 0.9, 0.8]
+    ])
+
+    assert (clauses.coherent_with(preds) == [ 
+        [False, True, True, True, False],
+        [True, True, False, True, True],
+        [True, False, True, True, False]
+    ]).all()
+
+def test_empty_resolution():
+    clauses = ClausesGroup([
+        Clause('0 2'),
+        Clause('n0 2'),
+        Clause('1 n2'),
+        Clause('n1 n2')
+    ])
+
+    with pytest.raises(Exception):
+        clauses.stratify([0, 1, 2])
+
+
+def test_random():
+    clauses = ClausesGroup.random(max_clauses=30, num_classes=10)
+    assert len(clauses) > 0 and len(clauses) <= 30

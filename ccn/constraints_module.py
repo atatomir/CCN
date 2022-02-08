@@ -87,7 +87,6 @@ class ConstraintsModule(nn.Module):
         # batch x num: compute head lower and upper bounds
         pos_head_max = torch.max(body_min * pos_head, dim=1).values.float()
         neg_head_max = torch.max(body_min * neg_head, dim=1).values.float()
-        assert (pos_head_max <= 1 - neg_head_max).all()
 
         preds = torch.maximum(pos_head_max, torch.minimum(1 - neg_head_max, preds.squeeze()))
         return preds

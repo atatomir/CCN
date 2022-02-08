@@ -1,4 +1,4 @@
-from numpy import isin
+import numpy as np
 from .literal import Literal
 from .constraint import Constraint
 
@@ -32,12 +32,20 @@ class Clause:
     def __str__(self):
         return ' '.join([str(literal) for literal in self.literals])
 
+    @classmethod 
+    def random(cls, num_classes):
+        atoms_count = np.random.randint(low=1, high=num_classes, size=1)
+        atoms = np.random.randint(num_classes, size=atoms_count)
+        
+        pos = atoms[np.random.randint(2, size=atoms_count) == 1]
+        literals = [Literal(atom, atom in pos) for atom in atoms]
+        return cls(literals)
+
     def fix_head(self, head):
         if not head in self.literals:
             raise Exception('Head not in clause')
         body = [lit.neg() for lit in self.literals if lit != head]
         return Constraint(head, body)
-
 
     def always_true(self):
         for literal in self.literals:
@@ -57,6 +65,14 @@ class Clause:
 
     def always_false(self):
         return len(self) == 0
+
+    def coherent_with(self, preds):
+        pos = [lit.atom for lit in self.literals if lit.positive]
+        neg = [lit.atom for lit in self.literals if not lit.positive]
+
+        preds = np.concatenate((preds[:, pos], 1 - preds[:, neg]), axis=1)
+        preds = preds.max(axis=1)
+        return preds > 0.5        
 
 def test_eq():
     assert Clause('1 n2 1 2') == Clause('2 1 n2')
@@ -86,3 +102,20 @@ def test_resolution():
     c1 = Clause('1 2 n3')
     c2 = Clause('n3 n4 5 6')
     assert c1.resolution(c2) == None
+
+def test_coherent_with():
+    c = Clause('0 1 n2 n3')
+    preds = np.array([ 
+        [.1, .2, .8, .9, .1],
+        [.2, .6, .6, .7, .2],
+        [.2, .3, .2, .8, .3],
+        [.6, .3, .3, .6, .4],
+        [.9, .9, .1, .1, .5],
+        [.4, .5, .6, .7, .6]
+    ])
+
+    assert (c.coherent_with(preds) == [False, True, True, True, True, False]).all()
+
+def test_random():
+    c = [Clause.random(10) for i in range(10)]
+    assert not (np.array(c) == c[0]).all() 
