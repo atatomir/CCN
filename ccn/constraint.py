@@ -6,7 +6,7 @@ class Constraint:
         if len(args) == 2:
             # Constraint(Literal, [Literal])
             self.head = args[0]
-            self.body = args[1]
+            self.body = frozenset(args[1])
         else:
             # Constraint(string)
             line = args[0].split(' ')
@@ -14,7 +14,23 @@ class Constraint:
                 line = line[1:]
             assert line[1] == ':-'
             self.head = Literal(line[0])
-            self.body = [Literal(lit) for lit in line[2:]]
+            self.body = frozenset(Literal(lit) for lit in line[2:])
+
+    def __eq__(self, other):
+        if not isinstance(other, Constraint): return False
+        return self.head == other.head and self.body == other.body
+
+    def __lt__(self, other):
+        if self.head == other.head:
+            return self.body < other.body 
+        else:
+            return self.head < other.head
+
+    def __hash__(self):
+        return hash((self.head, self.body))
+        
+    def __str__(self):
+        return str(self.head) + " :- " + ' '.join([str(lit) for lit in self.body])
             
     def head_encoded(self, num_classes):
         pos_head = np.zeros(num_classes)
@@ -50,16 +66,17 @@ class Constraint:
             head = 1 - head
             
         return body <= head
-        
-    def __str__(self):
-        return str(self.head) + " :- " + ' '.join([str(lit) for lit in self.body])
     
-def test_constraint_str():
-  assert str(Constraint(Literal('1'), [Literal('n0'), Literal("2")])) == "1 :- n0 2" 
-  assert str(Constraint('n0 :- 1 n2 n3')) == "n0 :- 1 n2 n3"
-  assert str(Constraint('0.0 n0 :- 1 n2 n3')) == "n0 :- 1 n2 n3"
+def test_str():
+    assert str(Constraint(Literal('1'), [Literal('n0'), Literal("2")])) == "1 :- 2 n0" 
+    assert str(Constraint('n0 :- 1 n2 n3')) == "n0 :- 1 n2 n3"
+    assert str(Constraint('0.0 n0 :- 1 n2 n3')) == "n0 :- 1 n2 n3"
+
+def test_eq():
+    assert Constraint('0 :- n1 2 n1') == Constraint('0 :- 2 n1')
+    assert Constraint('0 :- n1 2 n2') != Constraint('0 :- 2 n1')
     
-def test_constraint_coherent_with():
+def test_coherent_with():
   cons = Constraint('1 :- 0')
   assert (cons.coherent_with(np.array([
       [0.1, 0.2],
@@ -67,7 +84,6 @@ def test_constraint_coherent_with():
       [0.1, 0.1]
   ])) == [True, False, True]).all()
 
-def test_constraint_coherent_with2():
   cons = Constraint('n0 :- n1 2 3')
   assert (cons.coherent_with(np.array([
       [0.7, 0.8, 0.3, 0.4],

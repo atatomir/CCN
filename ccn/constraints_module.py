@@ -107,7 +107,7 @@ class ConstraintsModule(nn.Module):
 
         return preds
 
-def test_constraints_module():
+def test_no_goal():
     group = ConstraintsGroup([
         Constraint('1 :- 0'),
         Constraint('2 :- n3 4'),
@@ -120,7 +120,7 @@ def test_constraints_module():
     updated = cm(preds).numpy()
     assert group.coherent_with(updated).all()
         
-def test_constraints_module_positive_goal(): 
+def test_positive_goal(): 
     group = ConstraintsGroup([
         Constraint('0 :- 1 n2'),
         Constraint('3 :- 4 n5'),
@@ -134,7 +134,7 @@ def test_constraints_module_positive_goal():
     updated = cm(preds, goal=goal).numpy()
     assert (group.coherent_with(updated).all(axis=0) == [True, False, True, False]).all()
 
-def test_constraints_module_negative_goal():
+def test_negative_goal():
     group = ConstraintsGroup([
         Constraint('0 :- 1 n2 3 n4'),
         Constraint('n5 :- 6 n7 8 n9')
