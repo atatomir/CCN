@@ -1,4 +1,5 @@
 import numpy as np
+import networkx as nx
 from .constraint import Constraint
 
 class ConstraintsGroup:
@@ -62,6 +63,27 @@ class ConstraintsGroup:
     def coherent_with(self, preds):
         coherent = [constraint.coherent_with(preds) for constraint in self.constraints_list]
         return np.array(coherent).transpose()
+
+    def atoms(self):
+        atoms = set()
+        for constraint in self.constraints:
+            atoms = atoms.union(constraint.atoms())
+        return atoms
+
+    def graph(self):
+        G = nx.DiGraph()
+        G.add_nodes_from(self.atoms())
+
+        for constraint in self.constraints:
+            for lit in constraint.body:
+                x = lit.atom 
+                y = constraint.head.atom 
+                G.add_edge(x, y)
+                G[x][y]['body'] = lit.positive
+                G[x][y]['head'] = constraint.head.positive
+
+        return G
+
             
 
 def test_str():
@@ -93,3 +115,17 @@ def test_add():
     group1 = ConstraintsGroup([c2])
     group = group0 + group1 
     assert group == ConstraintsGroup([c1, c2])
+
+def test_atoms():
+    group = ConstraintsGroup('../constraints/full')
+    assert group.atoms() == set(range(41))
+
+
+def test_graph():
+    group = ConstraintsGroup('../constraints/example')
+    graph = group.graph() 
+    print(graph)
+    print(graph.nodes())
+    print(graph.edges())
+    assert list(graph.nodes()) == [0, 1, 2]
+    assert list(graph.edges()) == [(1, 0), (2, 1), (2, 0)]

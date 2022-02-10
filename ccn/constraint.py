@@ -66,6 +66,9 @@ class Constraint:
             head = 1 - head
             
         return body <= head
+
+    def atoms(self):
+        return {lit.atom for lit in self.body.union({self.head})}
     
 def test_str():
     assert str(Constraint(Literal('1'), [Literal('n0'), Literal("2")])) == "1 :- 2 n0" 
@@ -90,3 +93,7 @@ def test_coherent_with():
       [0.8, 0.8, 0.3, 0.4],
       [0.9, 0.8, 0.3, 0.4],
   ])) == [True, True, False]).all()
+
+def test_atoms():
+    c = Constraint('n2 :- 2 3 n4 5')
+    assert c.atoms() == {2, 3, 4, 5}

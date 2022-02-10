@@ -1,3 +1,4 @@
+from ast import literal_eval
 import numpy as np
 from .literal import Literal
 from .constraint import Constraint
@@ -83,6 +84,9 @@ class Clause:
     def is_subset(self, other):
         return self.literals.issubset(other.literals)
 
+    def atoms(self):
+        return {lit.atom for lit in self.literals}
+
 def test_eq():
     assert Clause('1 n2 1 2') == Clause('2 1 n2')
     assert Clause('1 n2 3 n4') != Clause('1 n2 3 4') 
@@ -136,3 +140,6 @@ def test_is_subset():
     assert not c1.is_subset(c2)
     assert c2.is_subset(c1)
     assert not c3.is_subset(c1)
+
+def test_atoms():
+    assert Clause('1 3 n5 17').atoms() == {1, 3, 5, 17}

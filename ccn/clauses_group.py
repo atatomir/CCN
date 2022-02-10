@@ -98,6 +98,12 @@ class ClausesGroup:
         answer = [clause.coherent_with(preds) for clause in self.clauses_list]
         return np.array(answer).transpose()
 
+    def atoms(self):
+        result = set() 
+        for clause in self.clauses:
+            result = result.union(clause.atoms())
+        return result
+
 def test_eq():
     c1 = Clause('1 n2 3')
     c2 = Clause('1 n2 n3 n2')
@@ -198,3 +204,12 @@ def test_compacted():
     ])
 
     assert clauses.compacted() == correct
+
+def test_atoms():
+    clauses = ClausesGroup([ 
+        Clause('1 2 n3 4'),
+        Clause('3 4 5 n6'),
+        Clause('n6 n7 n8 9')
+    ])
+
+    assert clauses.atoms() == set(range(1, 10))
