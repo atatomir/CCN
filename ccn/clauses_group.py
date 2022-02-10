@@ -13,6 +13,10 @@ class ClausesGroup:
         self.clauses = frozenset(clauses)
         self.clauses_list = clauses
 
+    @classmethod
+    def from_constraints_group(cls, group):
+        return cls([Clause.from_constraint(cons) for cons in group])
+
     def __len__(self):
         return len(self.clauses)
 
@@ -25,6 +29,9 @@ class ClausesGroup:
 
     def __hash__(self):
         return hash(self.clauses)
+
+    def __iter__(self):
+        return iter(self.clauses)
     
     @classmethod 
     def random(cls, max_clauses, num_classes):
@@ -32,19 +39,38 @@ class ClausesGroup:
         clauses = [Clause.random(num_classes) for i in range(clauses_count)]
         return cls(clauses)
 
+    def compacted(self):
+        clauses = list(self.clauses)
+        clauses.sort(reverse=True, key=len)
+        compacted = [] 
+
+        for clause in clauses:
+            compacted = [c for c in compacted if not clause.is_subset(c)]
+            compacted.append(clause)
+
+        #print(f"compacted {len(clauses) - len(compacted)} out of {len(clauses)}")
+        return ClausesGroup(compacted)
+
     def resolution(self, atom):
         pos = Literal(atom, True)
         neg = Literal(atom, False)
 
-        pos_clauses = {clause for clause in self.clauses if pos in clause}
-        neg_clauses = {clause for clause in self.clauses if neg in clause}
-        other_clauses = self.clauses.difference(pos_clauses).difference(neg_clauses)
+        # Split clauses in three categories
+        pos_clauses, neg_clauses, other_clauses = set(), set(), set()
+        for clause in self.clauses:
+            if pos in clause:
+                pos_clauses.add(clause)
+            elif neg in clause:
+                neg_clauses.add(clause)
+            else:
+                other_clauses.add(clause)
 
-        resolution_clauses = [c1.resolution(c2) for c1 in pos_clauses for c2 in neg_clauses]
-        resolution_clauses = [clause for clause in resolution_clauses if clause != None]
-        resolution_clauses = set(resolution_clauses)
-        next_clauses = ClausesGroup(other_clauses.union(resolution_clauses))
+        # Apply resolution on positive and negative clauses
+        resolution_clauses = [c1.resolution(c2, literal=pos) for c1 in pos_clauses for c2 in neg_clauses]
+        resolution_clauses = {clause for clause in resolution_clauses if clause != None}
+        next_clauses = ClausesGroup(other_clauses.union(resolution_clauses)).compacted()
 
+        # Compute constraints 
         pos_constraints = [clause.fix_head(pos) for clause in pos_clauses]
         neg_constraints = [clause.fix_head(neg) for clause in neg_clauses]
         constraints = ConstraintsGroup(pos_constraints + neg_constraints)
@@ -53,10 +79,12 @@ class ClausesGroup:
 
     def stratify(self, atoms):
         ## TODO: Find best atoms order
+        atoms = atoms[::-1]
         groups = []
         clauses = self
 
         for atom in atoms:
+            #print(f"Eliminating %{atom} from %{len(clauses)} clauses\n")
             constraints, clauses = clauses.resolution(atom)
             if len(constraints): groups.append(constraints)
 
@@ -105,7 +133,7 @@ def test_stratify():
         Clause('n0 n1'),
         Clause('n1 2'),
         Clause('1 n2')
-    ]).stratify([2, 1, 0])
+    ]).stratify([0, 1, 2])
     assert len(constraints) == 2
     assert constraints[0] == ConstraintsGroup([
         Constraint('n1 :- 0')
@@ -151,3 +179,22 @@ def test_empty_resolution():
 def test_random():
     clauses = ClausesGroup.random(max_clauses=30, num_classes=10)
     assert len(clauses) > 0 and len(clauses) <= 30
+
+def test_compacted():
+    clauses = ClausesGroup([
+        Clause('n1 n3'),
+        Clause('2 n3 5'),
+        Clause('1 n3'),
+        Clause('1 2 n3 4'),
+        Clause('n3 4'),
+        Clause('2 5')
+    ])
+    
+    correct = ClausesGroup([
+        Clause('n1 n3'),
+        Clause('1 n3'),
+        Clause('n3 4'),
+        Clause('2 5')
+    ])
+
+    assert clauses.compacted() == correct

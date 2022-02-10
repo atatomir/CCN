@@ -72,11 +72,11 @@ def test_str():
     assert str(group) == "1 :- n2\n0 :- 1 n2\nn0 :- 1"
 
 def test_from_file():
-    group = ConstraintsGroup('./constraints')
+    group = ConstraintsGroup('../constraints/example')
     assert str(group) == "1 :- n2\n0 :- 1 n2\nn0 :- 1"
 
 def test_coherent_with():
-    group = ConstraintsGroup('./constraints')
+    group = ConstraintsGroup('../constraints/example')
     assert (group.coherent_with(np.array([
         [0.1, 0.2, 0.3, 0.4],
         [0.7, 0.2, 0.3, 0.4],

@@ -8,13 +8,9 @@ class Clause:
             # Clause(string)
             literals = [Literal(lit) for lit in literals.split(' ')]
             self.literals = frozenset(literals)
-        elif isinstance(literals, list):
+        else:
             # Clause([Literals])
             self.literals = frozenset(literals)
-        else:
-            # Clause(Constraint)
-            body = [lit.neg() for lit in literals.body]
-            self.literals = frozenset([literals.head] + body)
 
     def __len__(self):
         return len(self.literals)
@@ -31,6 +27,11 @@ class Clause:
 
     def __str__(self):
         return ' '.join([str(literal) for literal in self.literals])
+
+    @classmethod 
+    def from_constraint(cls, constraint):
+        body = [lit.neg() for lit in constraint.body]
+        return cls([constraint.head] + body)
 
     @classmethod 
     def random(cls, num_classes):
@@ -53,14 +54,19 @@ class Clause:
                 return True 
         return False
 
-    def resolution(self, other):
+    def resolution_on(self, other, literal):
+        result = self.literals.union(other.literals).difference({literal, literal.neg()})
+        result = Clause(result)
+        return None if result.always_true() else result
+
+    def resolution(self, other, literal=None):
+        if literal != None:
+            return self.resolution_on(other, literal)
+
         for lit in self.literals:
             if lit.neg() in other.literals:
-                result = Clause(
-                    [l for l in self.literals if l != lit] +
-                    [l for l in other.literals if l != lit.neg()]
-                )
-                return None if result.always_true() else result
+                return self.resolution_on(other, lit)
+
         return None
 
     def always_false(self):
@@ -73,6 +79,9 @@ class Clause:
         preds = np.concatenate((preds[:, pos], 1 - preds[:, neg]), axis=1)
         preds = preds.max(axis=1)
         return preds > 0.5        
+
+    def is_subset(self, other):
+        return self.literals.issubset(other.literals)
 
 def test_eq():
     assert Clause('1 n2 1 2') == Clause('2 1 n2')
@@ -89,8 +98,8 @@ def test_always_true():
 def test_constraint():
     assert Clause('1 2 n3').fix_head(Literal('1')) == Constraint('1 :- n2 3')
     assert Clause('1 2 n3').fix_head(Literal('1')) != Constraint('n1 :- n2 3') 
-    assert Clause(Constraint('2 :- 1 n0')) == Clause('2 n1 0')
-    assert Clause(Constraint('n2 :- 1 n0')) != Clause('2 n1 0')
+    assert Clause.from_constraint(Constraint('2 :- 1 n0')) == Clause('2 n1 0')
+    assert Clause.from_constraint(Constraint('n2 :- 1 n0')) != Clause('2 n1 0')
 
 def test_resolution():
     c1 = Clause('1 n2 3')
@@ -119,3 +128,11 @@ def test_coherent_with():
 def test_random():
     c = [Clause.random(10) for i in range(10)]
     assert not (np.array(c) == c[0]).all() 
+
+def test_is_subset():
+    c1 = Clause('1 2 n3 4')
+    c2 = Clause('1 n3')
+    c3 = Clause('1 3')
+    assert not c1.is_subset(c2)
+    assert c2.is_subset(c1)
+    assert not c3.is_subset(c1)
