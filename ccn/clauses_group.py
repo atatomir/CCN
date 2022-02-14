@@ -80,19 +80,18 @@ class ClausesGroup:
     def stratify(self, atoms):
         ## TODO: Find best atoms order
         atoms = atoms[::-1]
-        groups = []
+        group = ConstraintsGroup([])
         clauses = self
 
         for atom in atoms:
             #print(f"Eliminating %{atom} from %{len(clauses)} clauses\n")
             constraints, clauses = clauses.resolution(atom)
-            if len(constraints): groups.append(constraints)
+            group = group + constraints
 
         if len(clauses):
             raise Exception("Unsatisfiable set of clauses")
 
-        ## TODO: Group constraints based on the topological order
-        return groups[::-1]
+        return group.stratify()
 
     def coherent_with(self, preds):
         answer = [clause.coherent_with(preds) for clause in self.clauses_list]

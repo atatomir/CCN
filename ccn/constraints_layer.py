@@ -38,16 +38,16 @@ def test_two_layers():
     group = group0 + group1 
 
     layer = ConstraintsLayer([group0, group1], 3)
-    preds = torch.rand((1000, 3))
+    preds = torch.rand((5000, 3))
     updated = layer(preds)
     assert group.coherent_with(updated.numpy()).all()
 
 def test_many_clauses():
     num_classes = 30
-    clauses = ClausesGroup.random(max_clauses=100, num_classes=num_classes)
+    clauses = ClausesGroup.random(max_clauses=200, num_classes=num_classes)
     layer = ConstraintsLayer(clauses, num_classes=num_classes)
 
-    preds = torch.rand((1000, num_classes))
+    preds = torch.rand((10000, num_classes))
     updated = layer(preds)
     assert clauses.coherent_with(updated.numpy()).all()
     

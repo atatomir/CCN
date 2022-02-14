@@ -64,7 +64,7 @@ class ConstraintsModule(nn.Module):
         pos_body = self.pos_body.unsqueeze(0).expand(batch, cons, num)
         neg_body = self.neg_body.unsqueeze(0).expand(batch, cons, num)
         
-        # ignore literals from constraints
+        # batch x cons x num: ignore literals from constraints
         if body_mask != None:
             pos_mask, neg_mask = body_mask
             pos_body = pos_body * pos_mask 
@@ -75,7 +75,7 @@ class ConstraintsModule(nn.Module):
         neg_body_min = torch.min(self.where(neg_body, 1. - exp_preds, 1), dim=2).values
         body_min = torch.minimum(pos_body_min, neg_body_min)
         
-        # ignore constraints
+        # batch x cons: ignore constraints
         if active_constraints != None:
             body_min = body_min * active_constraints
         
@@ -85,10 +85,12 @@ class ConstraintsModule(nn.Module):
         neg_head = self.neg_head.unsqueeze(0).expand(batch, cons, num)
         
         # batch x num: compute head lower and upper bounds
-        pos_head_max = torch.max(body_min * pos_head, dim=1).values.float()
-        neg_head_max = torch.max(body_min * neg_head, dim=1).values.float()
+        lb = torch.max(body_min * pos_head, dim=1).values.unsqueeze(2)
+        ub = 1 - torch.max(body_min * neg_head, dim=1).values.unsqueeze(2)
+        both = torch.cat((lb, ub), dim=2).sort(dim=2).values
+        lb, ub = both[:, :, 0], both[:, :, 1]
 
-        preds = torch.maximum(pos_head_max, torch.minimum(1 - neg_head_max, preds.squeeze()))
+        preds = torch.maximum(lb, torch.minimum(ub, preds.squeeze()))
         return preds
         
     def forward(self, preds, goal = None):
@@ -115,7 +117,7 @@ def test_no_goal():
         Constraint('n5 :- 11 n12 n13'),
     ])
     cm = ConstraintsModule(group, 14)
-    preds = torch.rand((1000, 14))
+    preds = torch.rand((5000, 14))
     updated = cm(preds).numpy()
     assert group.coherent_with(updated).all()
         
@@ -128,8 +130,8 @@ def test_positive_goal():
     ])
 
     cm = ConstraintsModule(group, 12)
-    preds = torch.rand((1000, 12))
-    goal = torch.tensor([1., 1., 0., 1., 1., 1., 0., 1., 0., 0., 0., 0.]).unsqueeze(0).expand(1000, 12)
+    preds = torch.rand((5000, 12))
+    goal = torch.tensor([1., 1., 0., 1., 1., 1., 0., 1., 0., 0., 0., 0.]).unsqueeze(0).expand(5000, 12)
     updated = cm(preds, goal=goal).numpy()
     assert (group.coherent_with(updated).all(axis=0) == [True, False, True, False]).all()
 
@@ -144,8 +146,8 @@ def test_negative_goal():
     ])
 
     cm = ConstraintsModule(group, 10)
-    preds = torch.rand((1000, 10))
-    goal = torch.tensor([0., 0., 1., 1., 0., 1., 0., 1., 1., 0.]).unsqueeze(0).expand(1000, 10)
+    preds = torch.rand((5000, 10))
+    goal = torch.tensor([0., 0., 1., 1., 0., 1., 0., 1., 1., 0.]).unsqueeze(0).expand(5000, 10)
     updated = cm(preds, goal=goal).numpy()
     assert reduced_group.coherent_with(updated).all()
 

@@ -70,6 +70,13 @@ class ConstraintsGroup:
             atoms = atoms.union(constraint.atoms())
         return atoms
 
+    def heads(self):
+        heads = set() 
+        for constraint in self.constraints:
+            heads.add(constraint.head.atom)
+        return heads
+
+    ## TODO: Double graph
     def graph(self):
         G = nx.DiGraph()
         G.add_nodes_from(self.atoms())
@@ -83,6 +90,37 @@ class ConstraintsGroup:
                 G[x][y]['head'] = constraint.head.positive
 
         return G
+
+    def stratify(self):
+        G = self.graph() 
+
+        for node in G.nodes():
+            G.nodes[node]['deps'] = 0 
+            G.nodes[node]['constraints'] = []
+
+        for x, y in G.edges():
+            G.nodes[y]['deps'] += 1
+
+        for constraint in self.constraints:
+            G.nodes[constraint.head.atom]['constraints'].append(constraint)
+
+        result = []
+        ready = [node for node in G.nodes() if G.nodes[node]['deps'] == 0]
+        while len(ready) > 0:
+            resolved = [cons for node in ready for cons in G.nodes[node]['constraints']]
+            if len(resolved) > 0:
+                result.append(ConstraintsGroup(resolved))
+            
+            next = []
+            for node in ready:
+                for other in G[node]:
+                    G.nodes[other]['deps'] -= 1
+                    if G.nodes[other]['deps'] == 0:
+                        next.append(other)                    
+
+            ready = next
+
+        return result        
 
             
 
@@ -129,3 +167,19 @@ def test_graph():
     print(graph.edges())
     assert list(graph.nodes()) == [0, 1, 2]
     assert list(graph.edges()) == [(1, 0), (2, 1), (2, 0)]
+
+def test_heads():
+    group = ConstraintsGroup('../constraints/example')
+    assert group.heads() == {0, 1}
+
+
+def test_stratify():
+    group = ConstraintsGroup([ 
+        Constraint('1 :- 0'),
+        Constraint('n2 :- n0 4'),
+        Constraint('3 :- n1 2')
+    ])
+    groups = group.stratify()
+    assert len(groups) == 2
+    assert groups[0].heads() == {1, 2}
+    assert groups[1].heads() == {3}
