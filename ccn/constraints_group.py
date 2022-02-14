@@ -1,6 +1,8 @@
 import numpy as np
 import networkx as nx
+from torch import neg_
 from .constraint import Constraint
+from .literal import Literal
 
 class ConstraintsGroup:
     def __init__(self, arg):
@@ -76,7 +78,6 @@ class ConstraintsGroup:
             heads.add(constraint.head.atom)
         return heads
 
-    ## TODO: Double graph
     def graph(self):
         G = nx.DiGraph()
         G.add_nodes_from(self.atoms())
@@ -88,6 +89,20 @@ class ConstraintsGroup:
                 G.add_edge(x, y)
                 G[x][y]['body'] = lit.positive
                 G[x][y]['head'] = constraint.head.positive
+
+        return G
+
+    def duograph(self):
+        atoms = self.atoms()
+        pos_atoms = [str(Literal(atom, True)) for atom in atoms]
+        neg_atoms = [str(Literal(atom, False)) for atom in atoms]
+
+        G = nx.DiGraph()
+        G.add_nodes_from(pos_atoms + neg_atoms)
+
+        for constraint in self.constraints:
+            for lit in constraint.body:
+                G.add_edge(str(lit), str(constraint.head))
 
         return G
 
@@ -162,16 +177,21 @@ def test_atoms():
 def test_graph():
     group = ConstraintsGroup('../constraints/example')
     graph = group.graph() 
+    assert list(graph.nodes()) == [0, 1, 2]
+    assert list(graph.edges()) == [(1, 0), (2, 1), (2, 0)]
+
+def test_duograph():
+    group = ConstraintsGroup('../constraints/example')
+    graph = group.duograph() 
     print(graph)
     print(graph.nodes())
     print(graph.edges())
-    assert list(graph.nodes()) == [0, 1, 2]
-    assert list(graph.edges()) == [(1, 0), (2, 1), (2, 0)]
+    assert list(graph.nodes()) == ['0', '1', '2', 'n0', 'n1', 'n2']
+    assert list(graph.edges()) == [('1', '0'), ('1', 'n0'), ('n2', '1'), ('n2', '0'),]
 
 def test_heads():
     group = ConstraintsGroup('../constraints/example')
     assert group.heads() == {0, 1}
-
 
 def test_stratify():
     group = ConstraintsGroup([ 
