@@ -1,4 +1,4 @@
-from matplotlib.pyplot import cla
+from matplotlib.pyplot import cohere
 import numpy as np
 import pytest
 from .literal import Literal
@@ -34,9 +34,14 @@ class ClausesGroup:
         return iter(self.clauses)
     
     @classmethod 
-    def random(cls, max_clauses, num_classes):
+    def random(cls, max_clauses, num_classes, coherent_with=np.array([])):
         clauses_count = np.random.randint(low=1, high=max_clauses)
         clauses = [Clause.random(num_classes) for i in range(clauses_count)]
+
+        if len(coherent_with) > 0:
+            keep = cls(clauses).coherent_with(coherent_with).all(axis=0)
+            clauses = np.array(clauses)[keep]
+
         return cls(clauses)
 
     def compacted(self):
@@ -182,8 +187,13 @@ def test_empty_resolution():
 
 
 def test_random():
-    clauses = ClausesGroup.random(max_clauses=30, num_classes=10)
-    assert len(clauses) > 0 and len(clauses) <= 30
+    num_classes = 10
+    max_clauses = 30
+
+    requirements = np.random.randint(low=0, high=2, size=(3, num_classes))
+    clauses = ClausesGroup.random(max_clauses=max_clauses, num_classes=num_classes, coherent_with=requirements)
+    assert len(clauses) > 0 and len(clauses) <= max_clauses
+    assert clauses.coherent_with(requirements).all()
 
 def test_compacted():
     clauses = ClausesGroup([
