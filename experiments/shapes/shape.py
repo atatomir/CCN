@@ -1,6 +1,4 @@
-from email.errors import InvalidBase64LengthDefect
 import numpy as np
-import matplotlib.pyplot as plt
 
 class Shape:
   def __init__(self):

@@ -4,6 +4,7 @@ import time
 from torch import nn
 from torch.utils.data import DataLoader 
 
+import context
 from ccn import ConstraintsLayer, train, test, draw_classes
 from shapes import ShapeDataset
 
