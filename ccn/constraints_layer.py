@@ -45,7 +45,7 @@ def test_two_layers():
 def test_many_clauses():
     num_classes = 30
     assignment = np.array([np.random.randint(low=0, high=2, size=num_classes)])
-    clauses = ClausesGroup.random(max_clauses=250, num_classes=num_classes, coherent_with=assignment)
+    clauses = ClausesGroup.random(max_clauses=150, num_classes=num_classes, coherent_with=assignment)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=num_classes, centrality='katz')
 
     preds = torch.rand((5000, num_classes))

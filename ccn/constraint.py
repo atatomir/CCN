@@ -30,7 +30,7 @@ class Constraint:
         return hash((self.head, self.body))
         
     def __str__(self):
-        return str(self.head) + " :- " + ' '.join([str(lit) for lit in self.body])
+        return str(self.head) + " :- " + ' '.join([str(lit) for lit in sorted(self.body)])
             
     def head_encoded(self, num_classes):
         pos_head = np.zeros(num_classes)
@@ -71,7 +71,7 @@ class Constraint:
         return {lit.atom for lit in self.body.union({self.head})}
     
 def test_str():
-    assert str(Constraint(Literal('1'), [Literal('n0'), Literal("2")])) == "1 :- 2 n0" 
+    assert str(Constraint(Literal('1'), [Literal('n0'), Literal("2")])) == "1 :- n0 2" 
     assert str(Constraint('n0 :- 1 n2 n3')) == "n0 :- 1 n2 n3"
     assert str(Constraint('0.0 n0 :- 1 n2 n3')) == "n0 :- 1 n2 n3"
 

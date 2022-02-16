@@ -13,6 +13,7 @@ class Clause:
             # Clause([Literals])
             self.literals = frozenset(literals)
 
+
     def __len__(self):
         return len(self.literals)
     
@@ -27,7 +28,7 @@ class Clause:
         return hash(self.literals)
 
     def __str__(self):
-        return ' '.join([str(literal) for literal in self.literals])
+        return ' '.join([str(literal) for literal in sorted(self.literals)])
 
     @classmethod 
     def from_constraint(cls, constraint):

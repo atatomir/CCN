@@ -23,7 +23,7 @@ class ConstraintsGroup:
         return ConstraintsGroup(self.constraints.union(other.constraints))
 
     def __str__(self):
-        return '\n'.join([str(constraint) for constraint in self.constraints])
+        return '\n'.join([str(constraint) for constraint in sorted(self.constraints)])
 
     def __iter__(self):
         return iter(self.constraints)
@@ -144,11 +144,11 @@ def test_str():
     cons1 = Constraint('n0 :- 1')
     cons2 = Constraint('1 :- n2')
     group = ConstraintsGroup([cons0, cons1, cons2])
-    assert str(group) == "1 :- n2\n0 :- 1 n2\nn0 :- 1"
+    assert str(group) == "n0 :- 1\n0 :- 1 n2\n1 :- n2"
 
 def test_from_file():
     group = ConstraintsGroup('../constraints/example')
-    assert str(group) == "1 :- n2\n0 :- 1 n2\nn0 :- 1"
+    assert str(group) == "n0 :- 1\n0 :- 1 n2\n1 :- n2"
 
 def test_coherent_with():
     group = ConstraintsGroup('../constraints/example')
@@ -177,8 +177,8 @@ def test_atoms():
 def test_graph():
     group = ConstraintsGroup('../constraints/example')
     graph = group.graph() 
-    assert list(graph.nodes()) == [0, 1, 2]
-    assert list(graph.edges()) == [(1, 0), (2, 1), (2, 0)]
+    assert set(graph.nodes()) == {0, 1, 2}
+    assert set(graph.edges()) == {(1, 0), (2, 1), (2, 0)}
 
 def test_duograph():
     group = ConstraintsGroup('../constraints/example')
@@ -186,8 +186,8 @@ def test_duograph():
     print(graph)
     print(graph.nodes())
     print(graph.edges())
-    assert list(graph.nodes()) == ['0', '1', '2', 'n0', 'n1', 'n2']
-    assert list(graph.edges()) == [('1', '0'), ('1', 'n0'), ('n2', '1'), ('n2', '0'),]
+    assert set(graph.nodes()) == {'0', '1', '2', 'n0', 'n1', 'n2'}
+    assert set(graph.edges()) == {('1', '0'), ('1', 'n0'), ('n2', '1'), ('n2', '0')}
 
 def test_heads():
     group = ConstraintsGroup('../constraints/example')
