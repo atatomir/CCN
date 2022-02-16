@@ -29,11 +29,11 @@ class Experiment:
         learning_rate = 1e-2
         self.optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas = (0.9, 0.999))
 
-    def run(self, epochs):
+    def run(self, epochs, device):
         for t in range(epochs):
             print(f"Epoch {t+1}\n-------------------------------")
-            train(self.train_dataloader, self.model, self.clayer, self.loss_fn, self.optimizer)
-            self.test_loss = test(self.test_dataloader, self.model, self.clayer, self.loss_fn)
+            train(self.train_dataloader, self.model, self.clayer, self.loss_fn, self.optimizer, device)
+            self.test_loss = test(self.test_dataloader, self.model, self.clayer, self.loss_fn, device)
         print("Done!")
         self.draw_results()
 
@@ -46,7 +46,7 @@ class Experiment:
 
         full = False
         draw_classes(self.model, draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path1)
-        draw_classes(lambda x: self.clayer(self.model(x)), draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path2)
+        draw_classes(nn.Sequential(self.model, self.clayer), draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path2)
 
     def save(self, dir='./'):
         path = self.experiment_path(dir)

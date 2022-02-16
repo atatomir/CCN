@@ -12,10 +12,10 @@ class ConstraintsModule(nn.Module):
         pos_head, neg_head = head
         pos_body, neg_body = body
         
-        self.pos_head = torch.from_numpy(pos_head).float()
-        self.neg_head = torch.from_numpy(neg_head).float()
-        self.pos_body = torch.from_numpy(pos_body).float()
-        self.neg_body = torch.from_numpy(neg_body).float()
+        self.pos_head = nn.Parameter(torch.from_numpy(pos_head).float(), requires_grad=False)
+        self.neg_head = nn.Parameter(torch.from_numpy(neg_head).float(), requires_grad=False)
+        self.pos_body = nn.Parameter(torch.from_numpy(pos_body).float(), requires_grad=False)
+        self.neg_body = nn.Parameter(torch.from_numpy(neg_body).float(), requires_grad=False)
         
     def where(self, cond, opt1, opt2):
         return opt2 + cond * (opt1 - opt2)

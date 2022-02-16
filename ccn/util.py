@@ -3,10 +3,14 @@ import pytest
 import matplotlib.pyplot as plt
 import numpy as np
 
-def train(dataloader, model, clayer, loss_fn, optimizer):
+def train(dataloader, model, clayer, loss_fn, optimizer, device):
     size = len(dataloader.dataset)
+    model, clayer = model.to(device), clayer.to(device)
     model.train()
+
     for batch, (X, y) in enumerate(dataloader):   
+        X, y = X.to(device), y.to(device)
+
         # Compute prediction error
         pred = model(X)
         constrained = clayer(pred, goal=y)
@@ -22,17 +26,23 @@ def train(dataloader, model, clayer, loss_fn, optimizer):
             print(f"loss: {loss:>7f} [{current:>5d}/{size:>5d}]")
 
 @pytest.mark.skip(reason="this is not a test")
-def test(dataloader, model, clayer, loss_fn):
+def test(dataloader, model, clayer, loss_fn, device):
     size = len(dataloader.dataset)
+    model, clayer = model.to(device), clayer.to(device)
     model.eval()
-    test_loss = 0
+
+    test_loss = 0.
     correct = 0.
+    
     with torch.no_grad():
         for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+
             pred = model(X)
             pred = clayer(pred)
             test_loss += loss_fn(pred, y).item()
             correct += (torch.where(pred > 0.5, 1., 0.) == y).sum(dim=0)
+
     test_loss /= size
     correct /= size
 
@@ -41,15 +51,16 @@ def test(dataloader, model, clayer, loss_fn):
     print(f" Avg loss: {test_loss:>8f} \n")
     return test_loss
 
-def draw_classes(model, draw=None, path=None):
+def draw_classes(model, draw=None, path=None, device='cpu'):
     dots = np.arange(0., 1., 0.01, dtype = "float32")
-    grid = torch.tensor([(x, y) for y in dots for x in dots])
+    grid = torch.tensor([(x, y) for y in dots for x in dots]).to(device)
+    model = model.to(device)
     preds = model(grid).detach()
 
     classes = preds.shape[1]
     fig, ax = plt.subplots(1, classes)
     for i, ax in enumerate(ax):
-        image = preds[:, i].view((len(dots), len(dots)))
+        image = preds[:, i].view((len(dots), len(dots))).to('cpu')
         ax.imshow(
             image, 
             cmap='hot', 
