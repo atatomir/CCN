@@ -226,7 +226,7 @@ def test_random():
 
     requirements = np.random.randint(low=0, high=2, size=(3, num_classes))
     clauses = ClausesGroup.random(max_clauses=max_clauses, num_classes=num_classes, coherent_with=requirements)
-    assert len(clauses) > 0 and len(clauses) <= max_clauses
+    assert len(clauses) <= max_clauses
     assert clauses.coherent_with(requirements).all()
 
 def test_compacted():
