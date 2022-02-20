@@ -93,6 +93,10 @@ class ClausesGroup:
 
         return G
 
+    @staticmethod 
+    def centrality_measures():
+        return ['degree', 'eigenvector', 'katz', 'closeness', 'betweenness']
+
     def difficulty(self, centrality):
         G = self.graph() 
         if centrality == 'degree':

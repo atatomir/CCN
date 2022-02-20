@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 from torch import nn
 
@@ -40,18 +41,31 @@ def test_two_layers():
     updated = layer(preds)
     assert group.coherent_with(updated.numpy()).all()
 
-def test_many_clauses():
+def _test_many_clauses(centrality, device):
     num_classes = 30
     assignment = np.array([np.random.randint(low=0, high=2, size=num_classes)])
     clauses = ClausesGroup.random(max_clauses=150, num_classes=num_classes, coherent_with=assignment)
-    layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=num_classes, centrality='katz')
-
+    layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=num_classes, centrality=centrality)
     preds = torch.rand((5000, num_classes))
+
+    layer, preds = layer.to(device), preds.to(device)
+
     updated = layer(preds)
-    assert clauses.coherent_with(updated.numpy()).all()
+    assert clauses.coherent_with(updated.cpu().numpy()).all()
     
-    difs = updated - preds
+    difs = (updated - preds).cpu()
     assert (difs == 0.).any() 
-    assert (difs < 0.).any()
-    assert (difs > 0.).any()
+    assert (difs != 0.).any()
+
+def _test_many_clauses_all_measures(device):
+    for centrality in ClausesGroup.centrality_measures():
+        _test_many_clauses(centrality, device)
+
+def test_many_clauses_cpu():
+    _test_many_clauses_all_measures('cpu')
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_many_clauses_cuda():
+    _test_many_clauses_all_measures('cuda')
+
     
