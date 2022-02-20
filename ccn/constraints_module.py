@@ -1,3 +1,4 @@
+from importlib_metadata import requires
 import numpy as np
 import torch 
 
@@ -12,10 +13,16 @@ class ConstraintsModule(nn.Module):
         pos_head, neg_head = head
         pos_body, neg_body = body
         
+        # Module parameters
         self.pos_head = nn.Parameter(torch.from_numpy(pos_head).float(), requires_grad=False)
         self.neg_head = nn.Parameter(torch.from_numpy(neg_head).float(), requires_grad=False)
         self.pos_body = nn.Parameter(torch.from_numpy(pos_body).float(), requires_grad=False)
         self.neg_body = nn.Parameter(torch.from_numpy(neg_body).float(), requires_grad=False)
+
+        # Precomputed parameters
+        self.symm_body = nn.Parameter(self.pos_body - self.neg_body, requires_grad=False)
+        self.symm_head = nn.Parameter(self.pos_head - self.neg_head, requires_grad=False)
+        self.literals_count = nn.Parameter(self.pos_body.sum(dim=1) + self.neg_body.sum(dim=1), requires_grad=False)
         
     def where(self, cond, opt1, opt2):
         return opt2 + cond * (opt1 - opt2)
@@ -24,35 +31,29 @@ class ConstraintsModule(nn.Module):
         batch, num = pred.shape[0], pred.shape[1]
         cons = self.pos_head.shape[0]
         return batch, num, cons
+
+    @staticmethod
+    def from_symmetric(preds):
+        return (preds + 1) / 2
+
+    @staticmethod
+    def to_symmetric(preds):
+        return 2 * preds - 1
     
-    # Get the constraints whose body (& head) is satisfied by goal
+    # Get the constraints whose body (& head) is satisfied by goal (batch x cons)
     def satisfied_body_constraints(self, goal):
-        batch, num, cons = self.dimensions(goal)
-        
-        # batch x cons: compute matching body
-        pos_matches = torch.matmul(goal, self.pos_body.t().float())
-        neg_matches = torch.matmul(1 - goal, self.neg_body.t().float())
-        matches = pos_matches + neg_matches
-        
-        # batch x cons: compute necessary matches
-        necessary = self.pos_body.sum(dim=1) + self.neg_body.sum(dim=1)
-        necessary = necessary.unsqueeze(0).expand(batch, cons)
-        
-        # batch x cons: compute satisfying constraints
-        return torch.where(matches == necessary, 1, 0)
+        symm_goal = ConstraintsModule.to_symmetric(goal)
+        matches = torch.matmul(symm_goal, self.symm_body.t()) 
+        return matches == self.literals_count
     
-    # Get the constraints whose head is not satisfied by goal
+    # Get the constraints whose head is not satisfied by goal (batch x cons)
     def unsatisfied_head_constraints(self, goal):
-        pos_head = torch.matmul(1 - goal, self.pos_head.t())
-        neg_head = torch.matmul(goal, self.neg_head.t())
-        
-        return pos_head + neg_head
-    
-    # Get the literals unsatisfied by goal
+        symm_goal = ConstraintsModule.to_symmetric(goal)
+        return torch.matmul(symm_goal, -self.symm_head.t()) == 1
+
+    # Get the literals unsatisfied by goal (batch x cons x num)
     def unsatisfied_literals_mask(self, goal):
         batch, num, cons = self.dimensions(goal)
-        
-        # batch x cons x num: compute (un)satisfied literals
         goal = goal.unsqueeze(1).expand(batch, cons, num)
         return 1 - goal, goal
     
@@ -77,7 +78,7 @@ class ConstraintsModule(nn.Module):
         
         # batch x cons: ignore constraints
         if active_constraints != None:
-            body_min = body_min * active_constraints
+            body_min = body_min * active_constraints.float()
         
         # batch x cons x num: prepare (body_min x head)
         body_min = body_min.unsqueeze(2).expand(batch, cons, num)
@@ -107,6 +108,13 @@ class ConstraintsModule(nn.Module):
         preds = self.apply(preds, active_constraints=active_constraints, body_mask=body_mask)
 
         return preds
+
+def test_symmetric():
+    pos = torch.from_numpy(np.arange(0., 1., 0.1))
+    symm = torch.from_numpy(np.arange(-1., 1., 0.2))
+    assert torch.isclose(ConstraintsModule.to_symmetric(pos), symm).all() 
+    assert torch.isclose(ConstraintsModule.from_symmetric(symm), pos).all() 
+    
 
 def test_no_goal():
     group = ConstraintsGroup([

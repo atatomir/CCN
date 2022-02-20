@@ -6,7 +6,6 @@ from .constraints_module import ConstraintsModule
 from .constraints_group import ConstraintsGroup
 from .constraint import Constraint
 from .clauses_group import ClausesGroup 
-from .clause import Clause
 
 class ConstraintsLayer(nn.Module):
     def __init__(self, strata, num_classes):
