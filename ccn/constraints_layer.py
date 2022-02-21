@@ -7,6 +7,7 @@ from .constraints_module import ConstraintsModule
 from .constraints_group import ConstraintsGroup
 from .constraint import Constraint
 from .clauses_group import ClausesGroup 
+from .clause import Clause
 
 class ConstraintsLayer(nn.Module):
     def __init__(self, strata, num_classes):
@@ -67,5 +68,12 @@ def test_many_clauses_cpu():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_many_clauses_cuda():
     _test_many_clauses_all_measures('cuda')
+
+def test_empty():
+    clauses = ClausesGroup.random(max_clauses=30, num_classes=10)
+    layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=10, centrality='katz')
+    preds = torch.rand((0, 10))
+    updated = layer(preds)
+    assert updated.shape == torch.Size([0, 10])
 
     

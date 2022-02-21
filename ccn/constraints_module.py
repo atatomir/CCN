@@ -59,6 +59,8 @@ class ConstraintsModule(nn.Module):
     
     def apply(self, preds, active_constraints=None, body_mask=None):
         batch, num, cons = self.dimensions(preds)
+        if len(preds) == 0:
+            return preds
         
         # batch x cons x num: prepare (preds x body)
         exp_preds = preds.unsqueeze(1).expand(batch, cons, num)
@@ -158,4 +160,16 @@ def test_negative_goal():
     goal = torch.tensor([0., 0., 1., 1., 0., 1., 0., 1., 1., 0.]).unsqueeze(0).expand(5000, 10)
     updated = cm(preds, goal=goal).numpy()
     assert reduced_group.coherent_with(updated).all()
+
+def test_empty():
+    group = ConstraintsGroup([
+        Constraint('0 :- 1')
+    ])
+
+    cm = ConstraintsModule(group, 2)
+    preds = torch.rand((0, 2))
+    goal = torch.rand((0, 2))
+    updated = cm(preds, goal=goal)
+    assert updated.shape == torch.Size([0, 2])
+
 
