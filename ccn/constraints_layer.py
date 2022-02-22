@@ -70,7 +70,8 @@ def test_many_clauses_cuda():
     _test_many_clauses_all_measures('cuda')
 
 def test_empty():
-    clauses = ClausesGroup.random(max_clauses=30, num_classes=10)
+    assignment = np.array([np.random.randint(low=0, high=2, size=10)])
+    clauses = ClausesGroup.random(max_clauses=30, num_classes=10, coherent_with=assignment)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=10, centrality='katz')
     preds = torch.rand((0, 10))
     updated = layer(preds)
