@@ -23,9 +23,6 @@ class ConstraintsModule(nn.Module):
         self.symm_body = nn.Parameter(self.pos_body - self.neg_body, requires_grad=False)
         self.symm_head = nn.Parameter(self.pos_head - self.neg_head, requires_grad=False)
         self.literals_count = nn.Parameter(self.pos_body.sum(dim=1) + self.neg_body.sum(dim=1), requires_grad=False)
-        
-    def where(self, cond, opt1, opt2):
-        return opt2 + cond * (opt1 - opt2)
     
     def dimensions(self, pred):
         batch, num = pred.shape[0], pred.shape[1]
@@ -56,7 +53,7 @@ class ConstraintsModule(nn.Module):
         batch, num, cons = self.dimensions(goal)
         goal = goal.unsqueeze(1).expand(batch, cons, num)
         return 1 - goal, goal
-    
+
     def apply(self, preds, active_constraints=None, body_mask=None):
         batch, num, cons = self.dimensions(preds)
         if len(preds) == 0:
@@ -74,9 +71,8 @@ class ConstraintsModule(nn.Module):
             neg_body = neg_body * neg_mask
         
         # batch x cons: compute body minima
-        pos_body_min = torch.min(self.where(pos_body, exp_preds, 1), dim=2).values
-        neg_body_min = torch.min(self.where(neg_body, 1. - exp_preds, 1), dim=2).values
-        body_min = torch.minimum(pos_body_min, neg_body_min)
+        body_rev = pos_body + exp_preds * (neg_body - pos_body)
+        body_min = 1. - torch.max(body_rev, dim=2).values
         
         # batch x cons: ignore constraints
         if active_constraints != None:
