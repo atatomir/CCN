@@ -49,10 +49,10 @@ class ConstraintsModule(nn.Module):
         return torch.matmul(symm_goal, -self.symm_head.t()) == 1
 
     # Get the literals unsatisfied by goal (batch x cons x num)
-    def unsatisfied_literals_mask(self, goal):
+    def satisfied_literals_mask(self, goal):
         batch, num, cons = self.dimensions(goal)
         goal = goal.unsqueeze(1).expand(batch, cons, num)
-        return 1 - goal, goal
+        return goal
 
     def apply(self, preds, active_constraints=None, body_mask=None):
         batch, num, cons = self.dimensions(preds)
@@ -66,9 +66,8 @@ class ConstraintsModule(nn.Module):
         
         # batch x cons x num: ignore literals from constraints
         if body_mask != None:
-            pos_mask, neg_mask = body_mask
-            pos_body = pos_body * pos_mask 
-            neg_body = neg_body * neg_mask
+            pos_body = pos_body * (1 - body_mask) 
+            neg_body = neg_body * body_mask
         
         # batch x cons: compute body minima
         body_rev = pos_body + exp_preds * (neg_body - pos_body)
@@ -84,10 +83,9 @@ class ConstraintsModule(nn.Module):
         neg_head = self.neg_head.unsqueeze(0).expand(batch, cons, num)
         
         # batch x num: compute head lower and upper bounds
-        lb = torch.max(body_min * pos_head, dim=1).values.unsqueeze(2)
-        ub = 1 - torch.max(body_min * neg_head, dim=1).values.unsqueeze(2)
-        both = torch.cat((lb, ub), dim=2).sort(dim=2).values
-        lb, ub = both[:, :, 0], both[:, :, 1]
+        lb = torch.max(body_min * pos_head, dim=1).values
+        ub = 1 - torch.max(body_min * neg_head, dim=1).values
+        lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
 
         preds = torch.maximum(lb, torch.minimum(ub, preds.squeeze()))
         return preds
@@ -102,7 +100,7 @@ class ConstraintsModule(nn.Module):
 
         # constraints with head not satisfied (only unsatisfied body literals)
         active_constraints = self.unsatisfied_head_constraints(goal)
-        body_mask = self.unsatisfied_literals_mask(goal)
+        body_mask = self.satisfied_literals_mask(goal)
         preds = self.apply(preds, active_constraints=active_constraints, body_mask=body_mask)
 
         return preds
