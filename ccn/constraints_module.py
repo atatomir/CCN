@@ -70,38 +70,42 @@ class ConstraintsModule(nn.Module):
         symm_goal = ConstraintsModule.to_symmetric(goal)
         return torch.matmul(symm_goal, -self.symm_head.t()) == 1
 
-    # Get the literals unsatisfied by goal (batch x cons x num)
-    def satisfied_literals_mask(self, goal):
-        batch, num, cons = self.dimensions(goal)
-        goal = goal.unsqueeze(1).expand(batch, cons, num)
-        return goal
-
-    def apply(self, preds, active_constraints=None, body_mask=None):
+    def apply(self, preds, active_constraints=None, goal=None):
         batch, num, cons = self.dimensions(preds)
         device = 'cpu' if preds.get_device() < 0 else 'cuda'
 
-        # batch x cons x num: prepare (preds x body)
-        exp_preds = preds.unsqueeze(1).expand(batch, cons, num)
-        pos_body = self.pos_body.unsqueeze(0).expand(batch, cons, num)
-        neg_body = self.neg_body.unsqueeze(0).expand(batch, cons, num)
-        
-        # batch x cons x num: ignore literals from constraints
-        if body_mask != None:
-            pos_body = pos_body * (1 - body_mask) 
-            neg_body = neg_body * body_mask
-        
-        # batch x cons: compute body minima
-        body_rev = pos_body + exp_preds * (neg_body - pos_body)
-        body_min = 1. - torch.max(body_rev, dim=2).values
+        # TODO: Keep old version as well & easily switch between them
+        # TODO: Remove unnecesary parameters
+
+        # batch x cons: body minima for each constraint
+        body_min = []
+        for c in range(cons):
+            pos_where = self.pos_body[c].bool()
+            neg_where = self.neg_body[c].bool()
+
+            pos_body = 1 - preds[:, pos_where]
+            neg_body = preds[:, neg_where]
+
+            # TODO: rename goal into mask
+            if not goal is None:
+                pos_body = pos_body * (1 - goal[:, pos_where])
+                neg_body = neg_body * goal[:, neg_where]
+
+            col = torch.cat((torch.zeros(batch, 1), pos_body, neg_body), dim=1)
+            col = col.max(dim=1).values
+            body_min.append(1 - col)
+
+        body_min = torch.stack(body_min, dim=1)
         
         # batch x cons: ignore constraints
         if active_constraints != None:
             body_min = body_min * active_constraints.float()
 
-        # update preds one constraint at a time
+        # batch x num: update preds one constraint at a time
         for c, lit in enumerate(self.heads):
             prev = preds[:, lit.atom]
             cand = body_min[:, c]
+            # TODO: Maybe create groups and apply min/max on each one
 
             if lit.positive:
                 updated = torch.maximum(prev, cand)
@@ -116,7 +120,7 @@ class ConstraintsModule(nn.Module):
         if len(preds) == 0 or len(self.atoms) == 0:
             return preds
 
-        if goal == None:
+        if goal is None:
             updated = self.to_minimal(preds)
             updated = self.apply(updated)
             return self.from_minimal(updated, preds)
@@ -130,8 +134,7 @@ class ConstraintsModule(nn.Module):
 
         # constraints with head not satisfied (only unsatisfied body literals)
         active_constraints = self.unsatisfied_head_constraints(goal)
-        body_mask = self.satisfied_literals_mask(goal)
-        updated = self.apply(updated, active_constraints=active_constraints, body_mask=body_mask)
+        updated = self.apply(updated, active_constraints=active_constraints, goal=goal)
 
         updated = self.from_minimal(updated, preds)
         return updated
