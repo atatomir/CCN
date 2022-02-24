@@ -91,7 +91,7 @@ class ConstraintsModule(nn.Module):
                 pos_body = pos_body * (1 - goal[:, pos_where])
                 neg_body = neg_body * goal[:, neg_where]
 
-            col = torch.cat((torch.zeros(batch, 1), pos_body, neg_body), dim=1)
+            col = torch.cat((torch.zeros(batch, 1, device=device), pos_body, neg_body), dim=1)
             col = col.max(dim=1).values
             body_min.append(1 - col)
 
