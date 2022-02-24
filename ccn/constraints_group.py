@@ -38,15 +38,13 @@ class ConstraintsGroup:
     def head_encoded(self, num_classes):
         pos_head = []
         neg_head = []
-        heads = []
         
         for constraint in self.constraints:
             pos, neg = constraint.head_encoded(num_classes)
             pos_head.append(pos)
             neg_head.append(neg)
-            heads.append(constraint.head)
             
-        return np.array(pos_head), np.array(neg_head), np.array(heads)
+        return np.array(pos_head), np.array(neg_head)
     
     def body_encoded(self, num_classes):
         pos_body = []

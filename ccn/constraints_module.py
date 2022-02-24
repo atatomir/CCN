@@ -11,7 +11,7 @@ class ConstraintsModule(nn.Module):
     def __init__(self, constraints_group, num_classes):
         super(ConstraintsModule, self).__init__()
         head, body = constraints_group.encoded(num_classes)
-        pos_head, neg_head, heads = head
+        pos_head, neg_head = head
         pos_body, neg_body = body
 
         # Handle only necessary atoms
@@ -21,12 +21,13 @@ class ConstraintsModule(nn.Module):
         pos_head, neg_head = self.to_minimal(pos_head), self.to_minimal(neg_head)
         pos_body, neg_body = self.to_minimal(pos_body), self.to_minimal(neg_body)
 
-        # Renumbered head literals
-        renumbered = dict()
+        # Reindexed head literals
+        reindexed = dict()
         for i, atom in enumerate(self.atoms):
-            renumbered[float(atom)] = i
+            reindexed[float(atom)] = i
 
-        self.heads = [Literal(renumbered[head.atom], head.positive) for head in heads]
+        heads = [constraint.head for constraint in constraints_group]
+        self.heads = [Literal(reindexed[head.atom], head.positive) for head in heads]
         
         # Module parameters
         self.pos_head = nn.Parameter(torch.from_numpy(pos_head).float(), requires_grad=False)
@@ -77,6 +78,7 @@ class ConstraintsModule(nn.Module):
 
     def apply(self, preds, active_constraints=None, body_mask=None):
         batch, num, cons = self.dimensions(preds)
+        device = 'cpu' if preds.get_device() < 0 else 'cuda'
 
         # batch x cons x num: prepare (preds x body)
         exp_preds = preds.unsqueeze(1).expand(batch, cons, num)
@@ -97,8 +99,7 @@ class ConstraintsModule(nn.Module):
             body_min = body_min * active_constraints.float()
 
         # update preds one constraint at a time
-        for c in range(cons):
-            lit = self.heads[c]
+        for c, lit in enumerate(self.heads):
             prev = preds[:, lit.atom]
             cand = body_min[:, c]
 
@@ -107,19 +108,8 @@ class ConstraintsModule(nn.Module):
             else:
                 updated = torch.minimum(prev, 1 - cand)
 
-            preds.index_copy_(1, torch.tensor([lit.atom]), updated.reshape(-1, 1))
-        
-        # # batch x cons x num: prepare (body_min x head)
-        # body_min = body_min.unsqueeze(2).expand(batch, cons, num)
-        # pos_head = self.pos_head.unsqueeze(0).expand(batch, cons, num)
-        # neg_head = self.neg_head.unsqueeze(0).expand(batch, cons, num)
-        
-        # # batch x num: compute head lower and upper bounds
-        # lb = torch.max(body_min * pos_head, dim=1).values
-        # ub = 1 - torch.max(body_min * neg_head, dim=1).values
-        # lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
+            preds.index_copy_(1, torch.tensor([lit.atom], device=device), updated.reshape(-1, 1))
 
-        # preds = torch.maximum(lb, torch.minimum(ub, preds))
         return preds
         
     def forward(self, preds, goal = None):
