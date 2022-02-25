@@ -14,17 +14,14 @@ class ConstraintsModule(nn.Module):
         pos_head, neg_head = head
         pos_body, neg_body = body
 
-        # Handle only necessary atoms
+        # Compute necessary atoms
         self.atoms = nn.Parameter(torch.tensor(list(constraints_group.atoms())), requires_grad=False)
+        reindexed = { float(atom): i for i, atom in enumerate(self.atoms) }
         if len(self.atoms) == 0: return 
 
+        # Reduce tensors to minimal size and reindex heads
         pos_head, neg_head = self.to_minimal(pos_head), self.to_minimal(neg_head)
         pos_body, neg_body = self.to_minimal(pos_body), self.to_minimal(neg_body)
-
-        # Reindexed head literals
-        reindexed = dict()
-        for i, atom in enumerate(self.atoms):
-            reindexed[float(atom)] = i
 
         heads = [constraint.head for constraint in constraints_group]
         self.heads = [Literal(reindexed[head.atom], head.positive) for head in heads]
@@ -70,53 +67,86 @@ class ConstraintsModule(nn.Module):
         symm_goal = ConstraintsModule.to_symmetric(goal)
         return torch.matmul(symm_goal, -self.symm_head.t()) == 1
 
-    def apply(self, preds, active_constraints=None, goal=None):
+    # Apply constraints together with 3D tensors
+    def apply_tensor(self, preds, active_constraints=None, body_mask=None):
+        batch, num, cons = self.dimensions(preds)
+
+        # batch x cons x num: prepare (preds x body)
+        exp_preds = preds.unsqueeze(1).expand(batch, cons, num)
+        pos_body = self.pos_body.unsqueeze(0).expand(batch, cons, num)
+        neg_body = self.neg_body.unsqueeze(0).expand(batch, cons, num)
+        
+        # batch x cons x num: ignore literals from constraints
+        if body_mask != None:
+            body_mask = body_mask.unsqueeze(1).expand(batch, cons, num)
+            pos_body = pos_body * (1 - body_mask) 
+            neg_body = neg_body * body_mask
+        
+        # batch x cons: compute body minima
+        body_rev = pos_body + exp_preds * (neg_body - pos_body)
+        body_min = 1. - torch.max(body_rev, dim=2).values
+        
+        # batch x cons: ignore constraints
+        if active_constraints != None:
+            body_min = body_min * active_constraints.float()
+        
+        # batch x cons x num: prepare (body_min x head)
+        body_min = body_min.unsqueeze(2).expand(batch, cons, num)
+        pos_head = self.pos_head.unsqueeze(0).expand(batch, cons, num)
+        neg_head = self.neg_head.unsqueeze(0).expand(batch, cons, num)
+        
+        # batch x num: compute head lower and upper bounds
+        lb = torch.max(body_min * pos_head, dim=1).values
+        ub = 1 - torch.max(body_min * neg_head, dim=1).values
+        lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
+
+        preds = torch.maximum(lb, torch.minimum(ub, preds))
+        return preds
+
+    # Apply constraints iteratively with 2D matrices
+    def apply_iterative(self, preds, active_constraints=None, body_mask=None):
         batch, num, cons = self.dimensions(preds)
         device = 'cpu' if preds.get_device() < 0 else 'cuda'
 
-        # TODO: Keep old version as well & easily switch between them
-        # TODO: Remove unnecesary parameters
-
-        # batch x cons: body minima for each constraint
-        body_min = []
-        for c in range(cons):
+        for c, lit in enumerate(self.heads):
+            # slice positive and negative body preds
             pos_where = self.pos_body[c].bool()
             neg_where = self.neg_body[c].bool()
 
             pos_body = 1 - preds[:, pos_where]
             neg_body = preds[:, neg_where]
 
-            # TODO: rename goal into mask
-            if not goal is None:
-                pos_body = pos_body * (1 - goal[:, pos_where])
-                neg_body = neg_body * goal[:, neg_where]
+            # clear masked literals 
+            if not body_mask is None:
+                pos_body = pos_body * (1 - body_mask[:, pos_where])
+                neg_body = neg_body * body_mask[:, neg_where]
 
-            col = torch.cat((torch.zeros(batch, 1, device=device), pos_body, neg_body), dim=1)
-            col = col.max(dim=1).values
-            body_min.append(1 - col)
-
-        body_min = torch.stack(body_min, dim=1)
-        
-        # batch x cons: ignore constraints
-        if active_constraints != None:
-            body_min = body_min * active_constraints.float()
-
-        # batch x num: update preds one constraint at a time
-        for c, lit in enumerate(self.heads):
+            # compute inferred values
             prev = preds[:, lit.atom]
-            cand = body_min[:, c]
-            # TODO: Maybe create groups and apply min/max on each one
+            candidate = torch.cat((torch.zeros(batch, 1, device=device), pos_body, neg_body), dim=1)
+            candidate = 1 - candidate.max(dim=1).values
 
+            # clear inactive constraints
+            if not active_constraints is None:
+                candidate = candidate * active_constraints.float()[:, c]
+
+            # update preds
             if lit.positive:
-                updated = torch.maximum(prev, cand)
+                updated = torch.maximum(prev, candidate)
             else:
-                updated = torch.minimum(prev, 1 - cand)
+                updated = torch.minimum(prev, 1 - candidate)
 
             preds.index_copy_(1, torch.tensor([lit.atom], device=device), updated.reshape(-1, 1))
 
         return preds
+
+    def apply(self, preds, active_constraints=None, body_mask=None, iterative=True):
+        if iterative:
+            return self.apply_iterative(preds, active_constraints, body_mask)
+        else:
+            return self.apply_tensor(preds, active_constraints, body_mask)
         
-    def forward(self, preds, goal = None):
+    def forward(self, preds, goal = None, iterative=True):
         if len(preds) == 0 or len(self.atoms) == 0:
             return preds
 
@@ -130,21 +160,25 @@ class ConstraintsModule(nn.Module):
         
         # constraints with head satisfied (only with full body satisfied)
         active_constraints = self.satisfied_body_constraints(goal)
-        updated = self.apply(updated, active_constraints=active_constraints)
+        updated = self.apply(updated, active_constraints=active_constraints, iterative=iterative)
 
         # constraints with head not satisfied (only unsatisfied body literals)
         active_constraints = self.unsatisfied_head_constraints(goal)
-        updated = self.apply(updated, active_constraints=active_constraints, goal=goal)
+        updated = self.apply(updated, active_constraints=active_constraints, body_mask=goal, iterative=iterative)
 
-        updated = self.from_minimal(updated, preds)
-        return updated
+        return self.from_minimal(updated, preds)
 
 def test_symmetric():
     pos = torch.from_numpy(np.arange(0., 1., 0.1))
     symm = torch.from_numpy(np.arange(-1., 1., 0.2))
     assert torch.isclose(ConstraintsModule.to_symmetric(pos), symm).all() 
-    assert torch.isclose(ConstraintsModule.from_symmetric(symm), pos).all() 
-    
+    assert torch.isclose(ConstraintsModule.from_symmetric(symm), pos).all()  
+
+def run_cm(cm, preds, goal=None):
+    iter = cm(preds, goal=goal, iterative=True)
+    tens = cm(preds, goal=goal, iterative=False)
+    assert (iter == tens).all()
+    return iter
 
 def test_no_goal():
     group = ConstraintsGroup([
@@ -156,7 +190,7 @@ def test_no_goal():
     ])
     cm = ConstraintsModule(group, 14)
     preds = torch.rand((5000, 14))
-    updated = cm(preds).numpy()
+    updated = run_cm(cm, preds).numpy()
     assert group.coherent_with(updated).all()
         
 def test_positive_goal(): 
@@ -170,7 +204,7 @@ def test_positive_goal():
     cm = ConstraintsModule(group, 12)
     preds = torch.rand((5000, 12))
     goal = torch.tensor([1., 1., 0., 1., 1., 1., 0., 1., 0., 0., 0., 0.]).unsqueeze(0).expand(5000, 12)
-    updated = cm(preds, goal=goal).numpy()
+    updated = run_cm(cm, preds, goal=goal).numpy()
     assert (group.coherent_with(updated).all(axis=0) == [True, False, True, False]).all()
 
 def test_negative_goal():
@@ -186,7 +220,7 @@ def test_negative_goal():
     cm = ConstraintsModule(group, 10)
     preds = torch.rand((5000, 10))
     goal = torch.tensor([0., 0., 1., 1., 0., 1., 0., 1., 1., 0.]).unsqueeze(0).expand(5000, 10)
-    updated = cm(preds, goal=goal).numpy()
+    updated = run_cm(cm, preds, goal=goal).numpy()
     assert reduced_group.coherent_with(updated).all()
 
 def test_empty_preds():
@@ -197,7 +231,7 @@ def test_empty_preds():
     cm = ConstraintsModule(group, 2)
     preds = torch.rand((0, 2))
     goal = torch.rand((0, 2))
-    updated = cm(preds, goal=goal)
+    updated = run_cm(cm, preds, goal=goal)
     assert updated.shape == torch.Size([0, 2])
 
 def test_no_constraints():
@@ -206,9 +240,9 @@ def test_no_constraints():
     preds = torch.rand((500, 10))
     goal = torch.rand((500, 10))
 
-    updated = cm(preds)
+    updated = run_cm(cm, preds)
     assert (updated == preds).all()
-    updated = cm(preds, goal=goal)
+    updated = run_cm(cm, preds, goal=goal)
     assert (updated == preds).all()
 
 

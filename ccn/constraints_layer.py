@@ -21,9 +21,9 @@ class ConstraintsLayer(nn.Module):
     def from_clauses_group(cls, group, num_classes, centrality):
         return cls(group.stratify(centrality), num_classes)
         
-    def forward(self, x, goal=None):
+    def forward(self, x, goal=None, iterative=True):
         for module in self.module_list:
-            x = module(x, goal=goal)
+            x = module(x, goal=goal, iterative=iterative)
         return x
 
 
@@ -47,11 +47,13 @@ def _test_many_clauses(centrality, device):
     assignment = np.array([np.random.randint(low=0, high=2, size=num_classes)])
     clauses = ClausesGroup.random(max_clauses=150, num_classes=num_classes, coherent_with=assignment)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=num_classes, centrality=centrality)
-    preds = torch.rand((5000, num_classes))
+    preds = torch.rand((2500, num_classes))
 
     layer, preds = layer.to(device), preds.to(device)
 
-    updated = layer(preds)
+    updated = layer(preds, iterative=True)
+    updated2 = layer(preds, iterative=False)
+    assert (updated == updated2).all()
     assert clauses.coherent_with(updated.cpu().numpy()).all()
     
     difs = (updated - preds).cpu()
