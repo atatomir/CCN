@@ -53,7 +53,7 @@ def _test_many_clauses(centrality, device):
 
     updated = layer(preds, iterative=True)
     updated2 = layer(preds, iterative=False)
-    assert (updated == updated2).all()
+    assert torch.isclose(updated, updated2).all()
     assert clauses.coherent_with(updated.cpu().numpy()).all()
     
     difs = (updated - preds).cpu()

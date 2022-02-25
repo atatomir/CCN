@@ -177,7 +177,7 @@ def test_symmetric():
 def run_cm(cm, preds, goal=None):
     iter = cm(preds, goal=goal, iterative=True)
     tens = cm(preds, goal=goal, iterative=False)
-    assert (iter == tens).all()
+    assert torch.isclose(iter, tens).all()
     return iter
 
 def test_no_goal():
