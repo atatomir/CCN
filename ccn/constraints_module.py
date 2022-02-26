@@ -267,5 +267,16 @@ def test_lb_ub():
     updated = run_cm(cm, preds)
     assert (updated[:, 0] == torch.tensor([0.6, 0.65, 0.7] * 2)).all()
 
+def _test_time(iterative):
+    group = ConstraintsGroup('../constraints/full')
+    cm = ConstraintsModule(group, 41)
+    preds = torch.rand(2500, 41)
+    cm(preds, iterative=iterative)
 
+def test_time_iterative():
+    for i in range(10):
+        _test_time(True)
 
+def test_time_tensor():
+    for i in range(10):
+        _test_time(False)
