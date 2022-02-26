@@ -97,7 +97,7 @@ class ClausesGroup:
     def centrality_measures():
         return ['degree', 'eigenvector', 'katz', 'closeness', 'betweenness']
 
-    def difficulty(self, centrality):
+    def centrality(self, centrality):
         G = self.graph() 
         if centrality == 'degree':
             return nx.algorithms.centrality.degree_centrality(G)
@@ -117,9 +117,9 @@ class ClausesGroup:
         if not isinstance(centrality, str):
             atoms = centrality
         else:
-            difficulty = self.difficulty(centrality)
+            centrality = self.centrality(centrality)
             atoms = list(self.atoms())
-            atoms.sort(key=lambda x: difficulty[x])
+            atoms.sort(key=lambda x: centrality[x])
 
         # Apply resolution repeatedly
         atoms = atoms[::-1]
@@ -273,42 +273,42 @@ def test_graph():
     assert nx.algorithms.is_bipartite(G)
     assert len(G.edges()) == 8
 
-def test_difficulty():
+def test_centrality():
     clauses = ClausesGroup([
         Clause('0 2'),
         Clause('1 2'),
         Clause('2 3 4')
     ])
 
-    assert np.allclose(list(clauses.difficulty('degree').items())[0:5], [
+    assert np.allclose(list(clauses.centrality('degree').items())[0:5], [
         (0, 1/7), 
         (1, 1/7), 
         (2, 3/7), 
         (3, 1/7), 
         (4, 1/7)
     ])
-    assert np.allclose(list(clauses.difficulty('eigenvector').items())[0:5], [
+    assert np.allclose(list(clauses.centrality('eigenvector').items())[0:5], [
         (0, 0.16827838529538847), 
         (1, 0.16827838529538852), 
         (2, 0.5745383453297614), 
         (3, 0.23798157473898407), 
         (4, 0.23798157473898351)
     ])
-    assert np.allclose(list(clauses.difficulty('katz').items())[0:5], [
+    assert np.allclose(list(clauses.centrality('katz').items())[0:5], [
         (0, 0.3243108798877643),
         (1, 0.3243108798877643),
         (2, 0.39975054223505035),
         (3, 0.3276201745804966),
         (4, 0.3276201745804966)
     ])
-    assert np.allclose(list(clauses.difficulty('closeness').items())[0:5], [
+    assert np.allclose(list(clauses.centrality('closeness').items())[0:5], [
         (0, 0.3333333333333333),
         (1, 0.3333333333333333),
         (2, 0.6363636363636364),
         (3, 0.3684210526315789),
         (4, 0.3684210526315789)
     ])
-    assert np.allclose(list(clauses.difficulty('betweenness').items())[0:5], [
+    assert np.allclose(list(clauses.centrality('betweenness').items())[0:5], [
         (0, 0.),
         (1, 0.),
         (2, 0.7619047619047619),

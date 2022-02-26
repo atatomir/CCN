@@ -140,7 +140,7 @@ class ConstraintsModule(nn.Module):
 
         return preds
 
-    def apply(self, preds, active_constraints=None, body_mask=None, iterative=True):
+    def apply(self, preds, iterative, active_constraints=None, body_mask=None):
         if iterative:
             return self.apply_iterative(preds, active_constraints, body_mask)
         else:
@@ -152,7 +152,7 @@ class ConstraintsModule(nn.Module):
 
         if goal is None:
             updated = self.to_minimal(preds)
-            updated = self.apply(updated)
+            updated = self.apply(updated, iterative=iterative)
             return self.from_minimal(updated, preds)
         
         updated = self.to_minimal(preds)

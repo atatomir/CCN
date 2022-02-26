@@ -26,8 +26,13 @@ class ConstraintsLayer(nn.Module):
             x = module(x, goal=goal, iterative=iterative)
         return x
 
+def run_layer(layer, preds):
+    updated = layer(preds, iterative=True)
+    updated2 = layer(preds, iterative=False)
+    assert torch.isclose(updated, updated2).all()
+    return updated
 
-def test_two_layers():
+def test_two_modules():
     group0 = ConstraintsGroup([
         Constraint('n1 :- 0')
     ])
@@ -39,7 +44,7 @@ def test_two_layers():
 
     layer = ConstraintsLayer([group0, group1], 3)
     preds = torch.rand((5000, 3))
-    updated = layer(preds)
+    updated = run_layer(layer, preds)
     assert group.coherent_with(updated.numpy()).all()
 
 def _test_many_clauses(centrality, device):
@@ -51,9 +56,7 @@ def _test_many_clauses(centrality, device):
 
     layer, preds = layer.to(device), preds.to(device)
 
-    updated = layer(preds, iterative=True)
-    updated2 = layer(preds, iterative=False)
-    assert torch.isclose(updated, updated2).all()
+    updated = run_layer(layer, preds)
     assert clauses.coherent_with(updated.cpu().numpy()).all()
     
     difs = (updated - preds).cpu()
