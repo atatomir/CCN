@@ -108,6 +108,9 @@ class ConstraintsModule(nn.Module):
         batch, num, cons = self.dimensions(preds)
         device = 'cpu' if preds.get_device() < 0 else 'cuda'
 
+        lb = torch.zeros_like(preds).t()
+        ub = torch.ones_like(preds).t()
+
         for c, lit in enumerate(self.heads):
             # slice positive and negative body preds
             pos_where = self.pos_body[c].bool()
@@ -122,7 +125,6 @@ class ConstraintsModule(nn.Module):
                 neg_body = neg_body * body_mask[:, neg_where]
 
             # compute inferred values
-            prev = preds[:, lit.atom]
             candidate = torch.cat((torch.zeros(batch, 1, device=device), pos_body, neg_body), dim=1)
             candidate = 1 - candidate.max(dim=1).values
 
@@ -132,13 +134,15 @@ class ConstraintsModule(nn.Module):
 
             # update preds
             if lit.positive:
-                updated = torch.maximum(prev, candidate)
+                lb[lit.atom] = torch.maximum(lb[lit.atom], candidate)
             else:
-                updated = torch.minimum(prev, 1 - candidate)
+                ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
 
-            preds.index_copy_(1, torch.tensor([lit.atom], device=device), updated.reshape(-1, 1))
+        lb, ub = lb.t(), ub.t()
+        lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
+        updated = torch.maximum(lb, torch.minimum(ub, preds))
 
-        return preds
+        return updated
 
     def apply(self, preds, iterative, active_constraints=None, body_mask=None):
         if iterative:
@@ -244,5 +248,24 @@ def test_no_constraints():
     assert (updated == preds).all()
     updated = run_cm(cm, preds, goal=goal)
     assert (updated == preds).all()
+
+def test_lb_ub():
+    group = ConstraintsGroup([ 
+        Constraint('0 :- 1'),
+        Constraint('n0 :- 2')
+    ])
+    cm = ConstraintsModule(group, 3)
+    preds = torch.tensor([ 
+        [0.5, 0.6, 0.3],
+        [0.65, 0.6, 0.3],
+        [0.8, 0.6, 0.3],
+        [0.5, 0.7, 0.4],
+        [0.65, 0.7, 0.4],
+        [0.8, 0.7, 0.4],
+    ])
+    
+    updated = run_cm(cm, preds)
+    assert (updated[:, 0] == torch.tensor([0.6, 0.65, 0.7] * 2)).all()
+
 
 
