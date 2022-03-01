@@ -9,4 +9,7 @@ requirements.txt:
 test:
 	cd ccn && pytest *.py -vv --durations=7
 
+testx:
+	cd ccn && pytest *.py -vv --durations=7 -x
+
 .PHONY: init test

@@ -108,8 +108,8 @@ class ConstraintsModule(nn.Module):
         batch, num, cons = self.dimensions(preds)
         device = 'cpu' if preds.get_device() < 0 else 'cuda'
 
-        lb = torch.zeros_like(preds).t()
-        ub = torch.ones_like(preds).t()
+        lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
+        ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
 
         for c, lit in enumerate(self.heads):
             # slice positive and negative body preds
@@ -138,7 +138,7 @@ class ConstraintsModule(nn.Module):
             else:
                 ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
 
-        lb, ub = lb.t(), ub.t()
+        lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
         lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
         updated = torch.maximum(lb, torch.minimum(ub, preds))
 
