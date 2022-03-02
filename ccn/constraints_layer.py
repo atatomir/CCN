@@ -7,24 +7,71 @@ from .constraints_module import ConstraintsModule
 from .constraints_group import ConstraintsGroup
 from .constraint import Constraint
 from .clauses_group import ClausesGroup 
-from .clause import Clause
+from .slicer import Slicer
 
 class ConstraintsLayer(nn.Module):
     def __init__(self, strata, num_classes):
         super(ConstraintsLayer, self).__init__()
 
         # ConstraintsLayer([ConstraintsGroup], int)
+        self.num_classes = num_classes
         modules = [ConstraintsModule(stratum, num_classes) for stratum in strata]
         self.module_list = nn.ModuleList(modules)
+
+        # Compute all strata & core 
+        core = set(range(num_classes))
+        strata = [stratum.heads() for stratum in strata]
+
+        for stratum in strata:
+            core = core.difference(stratum)
+
+        assert len(core) > 0
+        self.core = core
+        self.strata = strata
 
     @classmethod
     def from_clauses_group(cls, group, num_classes, centrality):
         return cls(group.stratify(centrality), num_classes)
+
+    def gradual_prefix(self, ratio):
+        atoms = self.core
+        remaining = round(ratio * self.num_classes) - len(atoms)
+        if (remaining <= 0): return atoms, 0
+
+        for i, stratum in enumerate(self.strata):
+            remaining -= len(stratum)
+            if (remaining < 0): return atoms, i 
+            atoms = atoms.union(stratum)
+
+        return atoms, len(self.strata)
+
+    def slicer(self, ratio):
+        atoms, modules = self.gradual_prefix(ratio)
+        return Slicer(atoms, modules)
         
-    def forward(self, x, goal=None, iterative=True):
-        for module in self.module_list:
+    def forward(self, x, goal=None, iterative=True, slicer=None):
+        modules = self.module_list if slicer is None else slicer.slice_modules(self.module_list)
+        for module in modules:
             x = module(x, goal=goal, iterative=iterative)
         return x
+
+def test_gradual_atoms():
+    groups = [ 
+        ConstraintsGroup([ Constraint('n1 :- 0'), Constraint('1 :- n2') ]),
+        ConstraintsGroup([ Constraint('4 :- n1'), Constraint('n3 :- 1') ])
+    ]
+    layer = ConstraintsLayer(groups, num_classes=5)
+    assert layer.gradual_prefix(0) == ({0, 2}, 0)
+    assert layer.gradual_prefix(0.33) == ({0, 2}, 0)
+    assert layer.gradual_prefix(0.49) == ({0, 2}, 0)
+    assert layer.gradual_prefix(0.51) == ({0, 1, 2}, 1)
+    assert layer.gradual_prefix(0.66) == ({0, 1, 2}, 1)
+    assert layer.gradual_prefix(1) == ({0, 1, 2, 3, 4}, 2)
+    
+    tensor = torch.rand(5, 5)
+    slicer = layer.slicer(0.66)
+    assert (slicer.slice_atoms(tensor) == tensor[:, [0, 1, 2]]).all()
+    assert (slicer.slice_modules([0, 1, 2]) == [0])
 
 def run_layer(layer, preds, backward=False):
     if backward:

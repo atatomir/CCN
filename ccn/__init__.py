@@ -6,3 +6,4 @@ from .clauses_group import ClausesGroup
 from .constraints_module import ConstraintsModule
 from .constraints_layer import ConstraintsLayer
 from .util import train, test, draw_classes
+from .slicer import Slicer

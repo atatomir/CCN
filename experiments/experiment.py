@@ -29,10 +29,23 @@ class Experiment:
         learning_rate = 1e-2
         self.optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas = (0.9, 0.999))
 
-    def run(self, epochs, device):
-        for t in range(epochs):
-            print(f"Epoch {t+1}\n-------------------------------")
-            train(self.train_dataloader, self.model, self.clayer, self.loss_fn, self.optimizer, device)
+    @classmethod
+    def get_ratio(cls, progress, progressive):
+        if progress > progressive:
+            return 1.
+        else:
+            return progress / progressive
+
+    @classmethod
+    def get_ratios(cls, epochs, progressive):
+        return [cls.get_ratio((t + 1) / epochs, progressive) for t in range(epochs)]
+
+    def run(self, epochs, device, progressive=0.):
+        ratios = Experiment.get_ratios(epochs, progressive)
+
+        for t, ratio in enumerate(ratios):
+            print(f"Epoch {t+1}, Ratio {ratio}\n-----------------------")
+            train(self.train_dataloader, self.model, self.clayer, self.loss_fn, self.optimizer, device, ratio=ratio)
             self.test_loss = test(self.test_dataloader, self.model, self.clayer, self.loss_fn, device)
         print("Done!")
         self.draw_results()

@@ -3,9 +3,10 @@ import pytest
 import matplotlib.pyplot as plt
 import numpy as np
 
-def train(dataloader, model, clayer, loss_fn, optimizer, device):
+def train(dataloader, model, clayer, loss_fn, optimizer, device, ratio=1.):
     size = len(dataloader.dataset)
     model, clayer = model.to(device), clayer.to(device)
+    slicer = clayer.slicer(ratio)
     model.train()
 
     for batch, (X, y) in enumerate(dataloader):   
@@ -13,7 +14,9 @@ def train(dataloader, model, clayer, loss_fn, optimizer, device):
 
         # Compute prediction error
         pred = model(X)
-        constrained = clayer(pred, goal=y)
+        constrained = clayer(pred, goal=y, slicer=slicer)
+
+        constrained, y = slicer.slice_atoms(constrained), slicer.slice_atoms(y)
         loss = loss_fn(constrained, y)
         
         # Backpropagation
