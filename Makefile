@@ -7,9 +7,9 @@ requirements.txt:
 	pipreqs .
 
 test:
-	cd ccn && pytest *.py -vv --durations=7
+	cd ccn && pytest *.py -vv --durations=10
 
 testx:
-	cd ccn && pytest *.py -vv --durations=7 -x
+	cd ccn && pytest *.py -vv --durations=10 -x
 
 .PHONY: init test

@@ -1,6 +1,7 @@
 from importlib_metadata import requires
 import numpy as np
 import torch 
+import pytest
 
 from torch import nn
 from .literal import Literal
@@ -267,16 +268,26 @@ def test_lb_ub():
     updated = run_cm(cm, preds)
     assert (updated[:, 0] == torch.tensor([0.6, 0.65, 0.7] * 2)).all()
 
-def _test_time(iterative):
+def _test_time(iterative, device):
     group = ConstraintsGroup('../constraints/full')
-    cm = ConstraintsModule(group, 41)
-    preds = torch.rand(2500, 41)
+    cm = ConstraintsModule(group, 41).to(device)
+    preds = torch.rand(5000, 41, device=device)
     cm(preds, iterative=iterative)
 
-def test_time_iterative():
+def test_time_iterative_cpu():
     for i in range(10):
-        _test_time(True)
+        _test_time(True, 'cpu')
 
-def test_time_tensor():
+def test_time_tensor_cpu():
     for i in range(10):
-        _test_time(False)
+        _test_time(False, 'cpu')
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_time_iterative_cuda():
+    for i in range(10):
+        _test_time(True, 'cuda')
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_time_tensor_cuda():
+    for i in range(10):
+        _test_time(False, 'cuda')
