@@ -3,6 +3,7 @@ import torch
 import time
 from torch import nn
 from torch.utils.data import DataLoader 
+from torch.utils.tensorboard import SummaryWriter
 
 import context
 from ccn import ConstraintsLayer, train, test, draw_classes
@@ -42,13 +43,21 @@ class Experiment:
 
     def run(self, epochs, device, progressive=0.):
         ratios = Experiment.get_ratios(epochs, progressive)
+        sw = SummaryWriter()
 
         for t, ratio in enumerate(ratios):
             print(f"Epoch {t+1}, Ratio {ratio}\n-----------------------")
             train(self.train_dataloader, self.model, self.clayer, self.loss_fn, self.optimizer, device, ratio=ratio)
-            self.test_loss = test(self.test_dataloader, self.model, self.clayer, self.loss_fn, device)
+            loss, correct = test(self.test_dataloader, self.model, self.clayer, self.loss_fn, device)
+
+            sw.add_scalar('Loss/test', loss, t)
+            for i, rate in enumerate(correct):
+                sw.add_scalar(f'Accuracy/test (label {i})', rate, t)
+            self.test_loss = loss
+
         print("Done!")
         self.draw_results()
+        sw.close()
 
     def experiment_path(self, dir):
         return f"{dir + self.name}-{self.test_loss:.5}-{int(time.time())}"

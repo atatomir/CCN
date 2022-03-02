@@ -49,10 +49,11 @@ def test(dataloader, model, clayer, loss_fn, device):
     test_loss /= size
     correct /= size
 
-    accuracy = ", ".join([f"{100 * rate:>0.1f}%" for rate in correct])
+    correct = [100 * rate for rate in correct]
+    accuracy = ", ".join([f"{rate:>0.1f}%" for rate in correct])
     print(f"Test Error: \n Accuracy: {accuracy}")
     print(f" Avg loss: {test_loss:>8f} \n")
-    return test_loss
+    return test_loss, correct
 
 def draw_classes(model, draw=None, path=None, device='cpu'):
     dots = np.arange(0., 1., 0.01, dtype = "float32")
