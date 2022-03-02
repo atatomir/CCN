@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import math
 import torch
 from torch import nn
 
@@ -35,7 +36,7 @@ class ConstraintsLayer(nn.Module):
 
     def gradual_prefix(self, ratio):
         atoms = self.core
-        remaining = round(ratio * self.num_classes) - len(atoms)
+        remaining = math.floor(ratio * self.num_classes) - len(atoms)
         if (remaining <= 0): return atoms, 0
 
         for i, stratum in enumerate(self.strata):
@@ -63,8 +64,8 @@ def test_gradual_atoms():
     layer = ConstraintsLayer(groups, num_classes=5)
     assert layer.gradual_prefix(0) == ({0, 2}, 0)
     assert layer.gradual_prefix(0.33) == ({0, 2}, 0)
-    assert layer.gradual_prefix(0.49) == ({0, 2}, 0)
-    assert layer.gradual_prefix(0.51) == ({0, 1, 2}, 1)
+    assert layer.gradual_prefix(0.59) == ({0, 2}, 0)
+    assert layer.gradual_prefix(0.61) == ({0, 1, 2}, 1)
     assert layer.gradual_prefix(0.66) == ({0, 1, 2}, 1)
     assert layer.gradual_prefix(1) == ({0, 1, 2, 3, 4}, 2)
     
