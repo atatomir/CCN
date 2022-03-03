@@ -9,6 +9,7 @@ from .constraints_group import ConstraintsGroup
 from .constraint import Constraint
 from .clauses_group import ClausesGroup 
 from .slicer import Slicer
+from .watch import Watcher
 
 class ConstraintsLayer(nn.Module):
     def __init__(self, strata, num_classes):
@@ -160,7 +161,8 @@ def test_no_clauses_cuda():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_cuda_memory():
     torch.cuda.empty_cache()
-    torch.cuda.reset_peak_memory_stats()
+    watcher = Watcher()
+
     device = 'cuda'
     num_classes = 41
     total_classes = num_classes + 100
@@ -170,14 +172,26 @@ def test_cuda_memory():
     clauses = ClausesGroup.from_constraints_group(constraints)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes, 'katz').to(device)
 
-    preds = torch.rand(batch, total_classes, device=device)
-    extra = torch.rand_like(preds, requires_grad=True)
-    goal = torch.randint(2, preds.shape, device=device).float()
-    summed = preds + extra
-    layer(summed, goal=goal)
-    
+    with watcher.watch('preds'):
+        preds = torch.rand(batch, total_classes, device=device)
+    with watcher.watch('extra'):
+        extra = torch.rand_like(preds, requires_grad=True)
+    with watcher.watch('goal'):
+        goal = torch.randint(2, preds.shape, device=device).float()
+    with watcher.watch('sum'):
+        summed = preds + extra
+        goal = None
+    with watcher.watch('layer'):
+        layer(summed, goal=goal)
+
     print(torch.cuda.memory_summary(abbreviated=True))
-    assert torch.cuda.max_memory_allocated() < 10
+    
+    allocated = watcher.maximum()
+    print(watcher.max())
+    print(allocated)
+    assert allocated < 1
+
+
 
     
 
