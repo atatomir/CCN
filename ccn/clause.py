@@ -16,7 +16,7 @@ class Clause:
 
     def __len__(self):
         return len(self.literals)
-    
+
     def __iter__(self):
         return iter(self.literals)
 

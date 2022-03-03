@@ -10,6 +10,7 @@ from .constraints_group import ConstraintsGroup
 class ClausesGroup:
     def __init__(self, clauses):
         # ClausesGroup([Clause])
+        print(clauses)
         self.clauses = frozenset(clauses)
         self.clauses_list = clauses
 
@@ -35,12 +36,12 @@ class ClausesGroup:
     
     @classmethod 
     def random(cls, max_clauses, num_classes, coherent_with=np.array([])):
-        clauses_count = np.random.randint(low=1, high=max_clauses)
+        clauses_count = np.random.randint(low=0, high=max_clauses + 1)
         clauses = [Clause.random(num_classes) for i in range(clauses_count)]
 
         if len(coherent_with) > 0:
             keep = cls(clauses).coherent_with(coherent_with).all(axis=0)
-            clauses = np.array(clauses)[keep]
+            clauses = np.array(clauses)[keep].tolist()
 
         return cls(clauses)
 
@@ -138,7 +139,8 @@ class ClausesGroup:
 
     def coherent_with(self, preds):
         answer = [clause.coherent_with(preds) for clause in self.clauses_list]
-        return np.array(answer).transpose()
+        answer = np.array(answer).reshape(len(self.clauses_list), preds.shape[0])
+        return answer.transpose()
 
     def atoms(self):
         result = set() 

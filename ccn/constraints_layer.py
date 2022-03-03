@@ -104,10 +104,10 @@ def test_two_modules():
     updated = run_layer(layer, preds)
     assert group.coherent_with(updated.numpy()).all()
 
-def _test_many_clauses(centrality, device, batch=1500, backward=False):
+def _test_many_clauses(centrality, device, batch=1500, max_clauses=150, backward=False):
     num_classes = 30
     assignment = np.array([np.random.randint(low=0, high=2, size=num_classes)])
-    clauses = ClausesGroup.random(max_clauses=150, num_classes=num_classes, coherent_with=assignment)
+    clauses = ClausesGroup.random(max_clauses=max_clauses, num_classes=num_classes, coherent_with=assignment)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=num_classes, centrality=centrality)
     preds = torch.rand((batch, num_classes))
 
@@ -116,7 +116,7 @@ def _test_many_clauses(centrality, device, batch=1500, backward=False):
     updated = run_layer(layer, preds, backward=backward)
     assert clauses.coherent_with(updated.cpu().numpy()).all()
     
-    if len(updated) > 100:
+    if len(updated) > 100 and len(clauses) > 3:
         difs = (updated - preds).cpu()
         assert (difs == 0.).any() 
         assert (difs != 0.).any()
@@ -147,5 +147,14 @@ def test_empty_cpu():
 def test_empty_cuda():
     _test_many_clauses('katz', 'cuda', batch=0, backward=False)
     _test_many_clauses('katz', 'cuda', batch=0, backward=True)
+
+def test_no_clauses_cpu():
+    _test_many_clauses('katz', 'cpu', batch=0, backward=False)
+    _test_many_clauses('katz', 'cpu', batch=0, backward=True)
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_no_clauses_cuda():
+    _test_many_clauses('katz', 'cuda', max_clauses=0, backward=False)
+    _test_many_clauses('katz', 'cuda', max_clauses=0, backward=True)
 
     
