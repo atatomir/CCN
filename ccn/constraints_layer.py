@@ -157,4 +157,28 @@ def test_no_clauses_cuda():
     _test_many_clauses('katz', 'cuda', max_clauses=0, backward=False)
     _test_many_clauses('katz', 'cuda', max_clauses=0, backward=True)
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_cuda_memory():
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    device = 'cuda'
+    num_classes = 41
+    total_classes = num_classes + 100
+    batch = 1000
+
+    constraints = ConstraintsGroup('../constraints/full')
+    clauses = ClausesGroup.from_constraints_group(constraints)
+    layer = ConstraintsLayer.from_clauses_group(clauses, num_classes, 'katz').to(device)
+
+    preds = torch.rand(batch, total_classes, device=device)
+    extra = torch.rand_like(preds, requires_grad=True)
+    goal = torch.randint(2, preds.shape, device=device).float()
+    summed = preds + extra
+    layer(summed, goal=goal)
+    
+    print(torch.cuda.memory_summary(abbreviated=True))
+    assert torch.cuda.max_memory_allocated() < 10
+
+    
+
     

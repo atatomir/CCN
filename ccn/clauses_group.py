@@ -10,7 +10,6 @@ from .constraints_group import ConstraintsGroup
 class ClausesGroup:
     def __init__(self, clauses):
         # ClausesGroup([Clause])
-        print(clauses)
         self.clauses = frozenset(clauses)
         self.clauses_list = clauses
 

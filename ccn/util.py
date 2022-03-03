@@ -18,6 +18,8 @@ def train(dataloader, model, clayer, loss_fn, optimizer, device, ratio=1.):
 
         constrained, y = slicer.slice_atoms(constrained), slicer.slice_atoms(y)
         loss = loss_fn(constrained, y)
+
+        print(torch.cuda.memory_summary(abbreviated=True))
         
         # Backpropagation
         optimizer.zero_grad()
