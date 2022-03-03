@@ -34,8 +34,8 @@ class ConstraintsModule(nn.Module):
         self.neg_body = nn.Parameter(torch.from_numpy(neg_body).float(), requires_grad=False)
 
         # Precomputed parameters
-        self.symm_body = nn.Parameter(self.pos_body - self.neg_body, requires_grad=False)
-        self.symm_head = nn.Parameter(self.pos_head - self.neg_head, requires_grad=False)
+        self.symm_body = nn.Parameter(self.pos_body - self.neg_body, requires_grad=False).t()
+        self.symm_head = nn.Parameter(self.pos_head - self.neg_head, requires_grad=False).t()
         self.literals_count = nn.Parameter(self.pos_body.sum(dim=1) + self.neg_body.sum(dim=1), requires_grad=False)
     
     def dimensions(self, pred):
@@ -56,17 +56,13 @@ class ConstraintsModule(nn.Module):
 
     def from_minimal(self, tensor, init):
         return init.index_copy(1, self.atoms, tensor)
-    
-    # Get the constraints whose body (& head) is satisfied by goal (batch x cons)
-    def satisfied_body_constraints(self, goal):
+
+    # Get constraints with full sat body and those with unsat head
+    def active_constraints(self, goal):
         symm_goal = ConstraintsModule.to_symmetric(goal)
-        matches = torch.matmul(symm_goal, self.symm_body.t()) 
-        return matches == self.literals_count
-    
-    # Get the constraints whose head is not satisfied by goal (batch x cons)
-    def unsatisfied_head_constraints(self, goal):
-        symm_goal = ConstraintsModule.to_symmetric(goal)
-        return torch.matmul(symm_goal, -self.symm_head.t()) == 1
+        full_body = torch.matmul(symm_goal, self.symm_body) == self.literals_count
+        unsat_head = torch.matmul(symm_goal, self.symm_head) == -1
+        return full_body, unsat_head 
 
     # Apply constraints together with 3D tensors
     def apply_tensor(self, preds, active_constraints=None, body_mask=None):
@@ -163,13 +159,10 @@ class ConstraintsModule(nn.Module):
         updated = self.to_minimal(preds)
         goal = self.to_minimal(goal)
         
-        # constraints with head satisfied (only with full body satisfied)
-        active_constraints = self.satisfied_body_constraints(goal)
-        updated = self.apply(updated, active_constraints=active_constraints, iterative=iterative)
-
-        # constraints with head not satisfied (only unsatisfied body literals)
-        active_constraints = self.unsatisfied_head_constraints(goal)
-        updated = self.apply(updated, active_constraints=active_constraints, body_mask=goal, iterative=iterative)
+        # apply full-body and unsat-head constraints according to CLoss
+        full_body, unsat_head = self.active_constraints(goal)
+        updated = self.apply(updated, active_constraints=full_body, iterative=iterative)
+        updated = self.apply(updated, active_constraints=unsat_head, body_mask=goal, iterative=iterative)
 
         return self.from_minimal(updated, preds)
 
