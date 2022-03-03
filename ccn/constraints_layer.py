@@ -9,7 +9,7 @@ from .constraints_group import ConstraintsGroup
 from .constraint import Constraint
 from .clauses_group import ClausesGroup 
 from .slicer import Slicer
-from .watch import Watcher
+from .profiler import Profiler
 
 class ConstraintsLayer(nn.Module):
     def __init__(self, strata, num_classes):
@@ -161,7 +161,7 @@ def test_no_clauses_cuda():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_cuda_memory():
     torch.cuda.empty_cache()
-    watcher = Watcher()
+    profiler = Profiler()
 
     device = 'cuda'
     num_classes = 41
@@ -172,24 +172,25 @@ def test_cuda_memory():
     clauses = ClausesGroup.from_constraints_group(constraints)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes, 'katz').to(device)
 
-    with watcher.watch('preds'):
-        preds = torch.rand(batch, total_classes, device=device)
-    with watcher.watch('extra'):
-        extra = torch.rand_like(preds, requires_grad=True)
-    with watcher.watch('goal'):
-        goal = torch.randint(2, preds.shape, device=device).float()
-    with watcher.watch('sum'):
-        summed = preds + extra
-        goal = None
-    with watcher.watch('layer'):
-        layer(summed, goal=goal)
+    with profiler.watch('complete'):
+        with profiler.watch('preds'):
+            preds = torch.rand(batch, total_classes, device=device)
+        with profiler.watch('extra'):
+            extra = torch.rand_like(preds, requires_grad=True)
+        with profiler.watch('goal'):
+            goal = torch.randint(2, preds.shape, device=device).float()
+        with profiler.watch('sum'):
+            summed = preds + extra
+            goal = None
+        with profiler.watch('layer'):
+            layer(summed, goal=goal)
 
-    print(torch.cuda.memory_summary(abbreviated=True))
+    #print(torch.cuda.memory_summary(abbreviated=True))
     
-    allocated = watcher.maximum()
-    print(watcher.max())
-    print(allocated)
-    assert allocated < 1
+    print(profiler.all())
+    print(profiler.max())
+    print(profiler.maximum())
+    assert profiler.maximum() < 1
 
 
 
