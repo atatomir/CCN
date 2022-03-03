@@ -34,8 +34,8 @@ class ConstraintsModule(nn.Module):
         self.neg_body = nn.Parameter(torch.from_numpy(neg_body).float(), requires_grad=False)
 
         # Precomputed parameters
-        self.symm_body = nn.Parameter(self.pos_body - self.neg_body, requires_grad=False).t()
-        self.symm_head = nn.Parameter(self.pos_head - self.neg_head, requires_grad=False).t()
+        self.symm_body = nn.Parameter((self.pos_body - self.neg_body).t(), requires_grad=False)
+        self.symm_head = nn.Parameter((self.pos_head - self.neg_head).t(), requires_grad=False)
         self.literals_count = nn.Parameter(self.pos_body.sum(dim=1) + self.neg_body.sum(dim=1), requires_grad=False)
     
     def dimensions(self, pred):
@@ -172,13 +172,16 @@ def test_symmetric():
     assert torch.isclose(ConstraintsModule.to_symmetric(pos), symm).all() 
     assert torch.isclose(ConstraintsModule.from_symmetric(symm), pos).all()  
 
-def run_cm(cm, preds, goal=None):
+def run_cm(cm, preds, goal=None, device='cpu'):
+    cm, preds = cm.to(device), preds.to(device)
+    if not goal is None: goal = goal.to(device)
+
     iter = cm(preds, goal=goal, iterative=True)
     tens = cm(preds, goal=goal, iterative=False)
     assert torch.isclose(iter, tens).all()
-    return iter
+    return iter.cpu()
 
-def test_no_goal():
+def _test_no_goal(device):
     group = ConstraintsGroup([
         Constraint('1 :- 0'),
         Constraint('2 :- n3 4'),
@@ -188,10 +191,10 @@ def test_no_goal():
     ])
     cm = ConstraintsModule(group, 14)
     preds = torch.rand((5000, 14))
-    updated = run_cm(cm, preds).numpy()
+    updated = run_cm(cm, preds, device=device).numpy()
     assert group.coherent_with(updated).all()
         
-def test_positive_goal(): 
+def _test_positive_goal(device): 
     group = ConstraintsGroup([
         Constraint('0 :- 1 n2'),
         Constraint('3 :- 4 n5'),
@@ -202,10 +205,10 @@ def test_positive_goal():
     cm = ConstraintsModule(group, 12)
     preds = torch.rand((5000, 12))
     goal = torch.tensor([1., 1., 0., 1., 1., 1., 0., 1., 0., 0., 0., 0.]).unsqueeze(0).expand(5000, 12)
-    updated = run_cm(cm, preds, goal=goal).numpy()
+    updated = run_cm(cm, preds, goal=goal, device=device).numpy()
     assert (group.coherent_with(updated).all(axis=0) == [True, False, True, False]).all()
 
-def test_negative_goal():
+def _test_negative_goal(device):
     group = ConstraintsGroup([
         Constraint('0 :- 1 n2 3 n4'),
         Constraint('n5 :- 6 n7 8 n9')
@@ -218,10 +221,21 @@ def test_negative_goal():
     cm = ConstraintsModule(group, 10)
     preds = torch.rand((5000, 10))
     goal = torch.tensor([0., 0., 1., 1., 0., 1., 0., 1., 1., 0.]).unsqueeze(0).expand(5000, 10)
-    updated = run_cm(cm, preds, goal=goal).numpy()
+    updated = run_cm(cm, preds, goal=goal, device=device).numpy()
     assert reduced_group.coherent_with(updated).all()
 
-def test_empty_preds():
+def test_goal_cpu():
+    _test_no_goal('cpu')
+    _test_negative_goal('cpu')
+    _test_positive_goal('cpu')
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_goal_cuda():
+    _test_no_goal('cuda')
+    _test_negative_goal('cuda')
+    _test_positive_goal('cuda')
+
+def _test_empty_preds(device):
     group = ConstraintsGroup([
         Constraint('0 :- 1')
     ])
@@ -229,19 +243,27 @@ def test_empty_preds():
     cm = ConstraintsModule(group, 2)
     preds = torch.rand((0, 2))
     goal = torch.rand((0, 2))
-    updated = run_cm(cm, preds, goal=goal)
+    updated = run_cm(cm, preds, goal=goal, device=device)
     assert updated.shape == torch.Size([0, 2])
 
-def test_no_constraints():
+def _test_no_constraints(device):
     group = ConstraintsGroup([])
     cm = ConstraintsModule(group, 10)
     preds = torch.rand((500, 10))
     goal = torch.rand((500, 10))
 
-    updated = run_cm(cm, preds)
+    updated = run_cm(cm, preds, device=device)
     assert (updated == preds).all()
-    updated = run_cm(cm, preds, goal=goal)
+    updated = run_cm(cm, preds, goal=goal, device=device)
     assert (updated == preds).all()
+
+def test_empty_preds_constraints_cpu():
+    _test_empty_preds('cpu')
+    _test_no_constraints('cpu')
+
+def test_empty_preds_constraints_cuda():
+    _test_empty_preds('cuda')
+    _test_no_constraints('cuda')
 
 def test_lb_ub():
     group = ConstraintsGroup([ 
