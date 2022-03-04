@@ -98,6 +98,11 @@ class Profiler:
 
     def all(self):
         return self.watches
+    
+    def sum(self):
+        result = dict()
+        for key in self.watches: result[key] = sum(self.watches[key])
+        return result
 
     def max(self):
         result = dict()

@@ -2,6 +2,7 @@ from importlib_metadata import requires
 import numpy as np
 import torch 
 import pytest
+import json
 
 from torch import nn
 from .literal import Literal
@@ -10,6 +11,8 @@ from .constraints_group import ConstraintsGroup
 from .profiler import Profiler
 
 class ConstraintsModule(nn.Module):
+    profiler = Profiler.shared()
+
     def __init__(self, constraints_group, num_classes):
         super(ConstraintsModule, self).__init__()
         head, body = constraints_group.encoded(num_classes)
@@ -45,20 +48,25 @@ class ConstraintsModule(nn.Module):
         return batch, num, cons
 
     @staticmethod
+    @profiler.wrap
     def from_symmetric(preds):
         return (preds + 1) / 2
 
     @staticmethod
+    @profiler.wrap
     def to_symmetric(preds):
         return 2 * preds - 1
 
+    @profiler.wrap
     def to_minimal(self, tensor):
         return tensor[:, self.atoms].reshape(tensor.shape[0], len(self.atoms))
 
+    @profiler.wrap
     def from_minimal(self, tensor, init):
         return init.index_copy(1, self.atoms, tensor)
 
     # Get constraints with full sat body and those with unsat head
+    @profiler.wrap
     def active_constraints(self, goal):
         symm_goal = ConstraintsModule.to_symmetric(goal)
         full_body = torch.matmul(symm_goal, self.symm_body) == self.literals_count
@@ -66,6 +74,7 @@ class ConstraintsModule(nn.Module):
         return full_body, unsat_head 
 
     # Apply constraints together with 3D tensors
+    @profiler.wrap
     def apply_tensor(self, preds, active_constraints=None, body_mask=None):
         batch, num, cons = self.dimensions(preds)
 
@@ -102,52 +111,76 @@ class ConstraintsModule(nn.Module):
         return preds
 
     # Apply constraints iteratively with 2D matrices
+    @profiler.wrap
     def apply_iterative(self, preds, active_constraints=None, body_mask=None):
         batch, num, cons = self.dimensions(preds)
         device = 'cpu' if preds.get_device() < 0 else 'cuda'
 
-        lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
-        ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
+        if not active_constraints is None: active_constraints = active_constraints.float()
+        zeros = torch.zeros(batch, 1, device=device)
+        ones = torch.ones(batch, device=device)
+
+        profiler = ConstraintsModule.profiler
+
+        with profiler.watch('iter_init'):
+            lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
+            ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
 
         for c, lit in enumerate(self.heads):
             # slice positive and negative body preds
-            pos_where = self.pos_body[c].bool()
-            neg_where = self.neg_body[c].bool()
+            with profiler.watch('iter_where'):
+                pos_where = self.pos_body[c].bool()
+                neg_where = self.neg_body[c].bool()
 
-            pos_body = 1 - preds[:, pos_where]
-            neg_body = preds[:, neg_where]
+            with profiler.watch('iter_body'):
+                pos_body = 1 - preds[:, pos_where]
+                neg_body = preds[:, neg_where]
 
             # clear masked literals 
-            if not body_mask is None:
-                pos_body = pos_body * (1 - body_mask[:, pos_where])
-                neg_body = neg_body * body_mask[:, neg_where]
+            with profiler.watch('iter_mask'):
+                if not body_mask is None:
+                    pos_body = pos_body * (1 - body_mask[:, pos_where])
+                    neg_body = neg_body * body_mask[:, neg_where]
 
             # compute inferred values
-            candidate = torch.cat((torch.zeros(batch, 1, device=device), pos_body, neg_body), dim=1)
-            candidate = 1 - candidate.max(dim=1).values
+            with profiler.watch('iter_candidate'):
+                with profiler.watch('iter_candidate_cat'):
+                    candidate = torch.cat((zeros, pos_body, neg_body), dim=1)
+                with profiler.watch('iter_candidate_max'):
+                    candidate = 1 - candidate.max(dim=1).values
+
+            # with profiler.watch('iter_candidate2'):
+            #     c1 = pos_body.max(dim=1).values if pos_body.shape[1] > 0 else ones
+            #     c2 = neg_body.max(dim=1).values if neg_body.shape[1] > 0 else ones
+            #     candidate = 1 - torch.maximum(c1, c2)
 
             # clear inactive constraints
-            if not active_constraints is None:
-                candidate = candidate * active_constraints.float()[:, c]
+            with profiler.watch('iter_active_cons'):
+                if not active_constraints is None:
+                    candidate = candidate * active_constraints[:, c]
 
             # update preds
-            if lit.positive:
-                lb[lit.atom] = torch.maximum(lb[lit.atom], candidate)
-            else:
-                ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
+            with profiler.watch('iter_min_max'):
+                if lit.positive:
+                    lb[lit.atom] = torch.maximum(lb[lit.atom], candidate)
+                else:
+                    ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
 
-        lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
-        lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
-        updated = torch.maximum(lb, torch.minimum(ub, preds))
+        with profiler.watch('iter_lb_ub'):
+            lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
+            lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
+            updated = torch.maximum(lb, torch.minimum(ub, preds))
 
         return updated
 
+    @profiler.wrap
     def apply(self, preds, iterative, active_constraints=None, body_mask=None):
         if iterative:
             return self.apply_iterative(preds, active_constraints, body_mask)
         else:
             return self.apply_tensor(preds, active_constraints, body_mask)
         
+    @profiler.wrap
     def forward(self, preds, goal = None, iterative=True):
         if len(preds) == 0 or len(self.atoms) == 0:
             return preds
@@ -235,6 +268,7 @@ def test_goal_cuda():
     _test_no_goal('cuda')
     _test_negative_goal('cuda')
     _test_positive_goal('cuda')
+    print(json.dumps(ConstraintsModule.profiler.max(), indent=4, sort_keys=True))
 
 def _test_empty_preds(device):
     group = ConstraintsGroup([

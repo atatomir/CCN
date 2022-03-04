@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import json
 import math
 import torch
 from torch import nn
@@ -162,6 +163,7 @@ def test_no_clauses_cuda():
 def test_cuda_memory():
     torch.cuda.empty_cache()
     profiler = Profiler()
+    ConstraintsModule.profiler.reset()
 
     device = 'cuda'
     num_classes = 41
@@ -181,15 +183,14 @@ def test_cuda_memory():
             goal = torch.randint(2, preds.shape, device=device).float()
         with profiler.watch('sum'):
             summed = preds + extra
-            goal = None
         with profiler.watch('layer'):
-            layer(summed, goal=goal)
+            layer(summed, goal=goal, iterative=True)
 
     #print(torch.cuda.memory_summary(abbreviated=True))
     
-    print(profiler.all())
-    print(profiler.max())
-    print(profiler.maximum())
+    print(json.dumps(profiler.max(), indent=4, sort_keys=True))
+    print(json.dumps(ConstraintsModule.profiler.max(), indent=4, sort_keys=True))
+    print(json.dumps(ConstraintsModule.profiler.sum(), indent=4, sort_keys=True))
     assert profiler.maximum() < 1
 
 
