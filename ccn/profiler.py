@@ -5,6 +5,9 @@ class MaxStack:
     def __init__(self):
         self.stack = []
 
+    def __len__(self):
+        return len(self.stack)
+
     def push(self, value):
         self.stack.append(value)
 
@@ -21,63 +24,74 @@ class MaxStack:
         return value
 
 
-class Watch:
-    def __init__(self, stack, callback):
-        self.stack = stack
-        self.callback = callback
-
-    def get_peak(self):
-        return torch.cuda.max_memory_allocated()
-
-    def reset_peak(self):
-        torch.cuda.reset_peak_memory_stats()
-
-    def __enter__(self):
-        self.stack.update(self.get_peak())
-        self.reset_peak()
-
-        self.init = self.get_peak()
-        self.stack.push(self.init)
-
-    def __exit__(self, a, b, c):
-        self.stack.update(self.get_peak())
-        # self.reset_peak() # last block inflence moved in pop
-
-        value = (self.stack.pop() - self.init) / 1024 / 1024
-        self.callback(value)
-
-
 class Profiler:
     def __init__(self):
         self.watches = dict() 
         self.stack = MaxStack()
+
+    @staticmethod
+    def get_peak():
+        return torch.cuda.max_memory_allocated()
+
+    @staticmethod
+    def reset_peak():
+        torch.cuda.reset_peak_memory_stats()
+
+    @classmethod
+    def shared(cls):
+        if not hasattr(cls, '_shared_'):
+            cls._shared_ = cls() 
+        return cls._shared_
 
     def register(self, name, value):
         if not name in self.watches: 
             self.watches[name] = [value]
         else: 
             self.watches[name].append(value)
+    
+    def enter(self):
+        self.stack.update(Profiler.get_peak())
+        Profiler.reset_peak()
+        self.stack.push(0)
+        return Profiler.get_peak()
+
+    def exit(self, name, reference):
+        self.stack.update(Profiler.get_peak())
+        value = (self.stack.pop() - reference) / 1024 / 1024
+        self.register(name, value)
 
     def watch(self, name):
-        return Watch(self.stack, lambda value: self.register(name, value))
+        return Watch(name, self)
+
+    def reset(self):
+        assert len(self.stack) == 0
+        self.watches.clear()
 
     def all(self):
         return self.watches
 
     def max(self):
         result = dict()
-        for key in self.watches:
-            result[key] = max(self.watches[key])
-
+        for key in self.watches: result[key] = max(self.watches[key])
         return result
 
     def maximum(self):
         pre = self.max()
         result = 0
-        for key in pre:
-            result = max(result, pre[key])
-
+        for key in pre: result = max(result, pre[key])
         return result
+
+
+class Watch:
+    def __init__(self, name, profiler):
+        self.name = name 
+        self.profiler = profiler
+
+    def __enter__(self):
+        self.reference = self.profiler.enter()
+
+    def __exit__(self, a, b, c):
+        self.profiler.exit(self.name, self.reference)
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test():
@@ -112,3 +126,23 @@ def test():
 
     results = profiler.maximum()
     assert results == 30.
+
+    profiler.reset()
+    assert len(profiler.all()) == 0
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_shared_():
+    device = 'cuda'
+    profiler = Profiler.shared() 
+
+    with profiler.watch('test'):
+        a = torch.rand(1024, 1024, device=device)
+        profiler2 = Profiler.shared()
+        with profiler2.watch('test2'):
+            b = torch.rand(512, 512, device=device)
+
+    assert 'test' in profiler.all()
+    assert 'test2' in profiler.all()
+
+
+
