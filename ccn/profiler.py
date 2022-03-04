@@ -1,6 +1,10 @@
+from cProfile import Profile
 import torch
 import pytest
 
+# A stack with abstract operations:
+# - push & pop as usual
+# - update x: set all values v to max(v, x)
 class MaxStack:
     def __init__(self):
         self.stack = []
@@ -23,19 +27,40 @@ class MaxStack:
             self.stack.append(max(last, value))
         return value
 
+def singleton(cls):
+    def constructor(*args, **kwargs):
+        if not hasattr(cls, '_instance_'):
+            cls._instance_ = cls(*args, **kwargs)
+        return cls._instance_ 
+    return constructor
 
+# Manages the global cuda profiling data 
+@singleton
+class ProfilerManager:
+    def __init__(self):
+        self.stack = MaxStack()
+
+    def get_peak(self):
+        return torch.cuda.max_memory_allocated()
+
+    def reset_peak(self):
+        torch.cuda.reset_peak_memory_stats()
+
+    def enter(self):
+        self.stack.update(self.get_peak())
+        self.reset_peak()
+        self.stack.push(0)
+        return self.get_peak()
+
+    def exit(self):
+        self.stack.update(self.get_peak())
+        return self.stack.pop()
+
+# Profiler that records data from the manager
 class Profiler:
     def __init__(self):
         self.watches = dict() 
-        self.stack = MaxStack()
-
-    @staticmethod
-    def get_peak():
-        return torch.cuda.max_memory_allocated()
-
-    @staticmethod
-    def reset_peak():
-        torch.cuda.reset_peak_memory_stats()
+        self.manager = ProfilerManager()
 
     @classmethod
     def shared(cls):
@@ -48,23 +73,19 @@ class Profiler:
             self.watches[name] = [value]
         else: 
             self.watches[name].append(value)
-    
+
     def enter(self):
-        self.stack.update(Profiler.get_peak())
-        Profiler.reset_peak()
-        self.stack.push(0)
-        return Profiler.get_peak()
+        return self.manager.enter()
 
     def exit(self, name, reference):
-        self.stack.update(Profiler.get_peak())
-        value = (self.stack.pop() - reference) / 1024 / 1024
+        value = self.manager.exit()
+        value = (value - reference) / 1024 / 1024
         self.register(name, value)
 
     def watch(self, name):
         return Watch(name, self)
 
     def reset(self):
-        assert len(self.stack) == 0
         self.watches.clear()
 
     def all(self):
@@ -93,8 +114,14 @@ class Watch:
     def __exit__(self, a, b, c):
         self.profiler.exit(self.name, self.reference)
 
+
+def test_one_manager():
+    manger = ProfilerManager()
+    manager2 = ProfilerManager()
+    assert id(manger) == id(manager2)
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-def test():
+def test_one_profiler():
     device = 'cuda'
     profiler = Profiler()
 
@@ -130,19 +157,37 @@ def test():
     profiler.reset()
     assert len(profiler.all()) == 0
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-def test_shared_():
+def _test_nested(profiler, profiler2):
     device = 'cuda'
-    profiler = Profiler.shared() 
 
     with profiler.watch('test'):
         a = torch.rand(1024, 1024, device=device)
-        profiler2 = Profiler.shared()
         with profiler2.watch('test2'):
             b = torch.rand(512, 512, device=device)
+            del b
+        with profiler2.watch('test3'):
+            b = torch.rand(512 // 2, 512 // 2, device=device)
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_different_profilers():
+    device = 'cuda'
+    profiler = Profiler()
+    profiler2 = Profiler()
+
+    _test_nested(profiler, profiler2)
+    assert profiler.maximum() == 5.
+    assert profiler2.maximum() == 1.
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_shared():
+    device = 'cuda'
+    profiler = Profiler.shared() 
+    profiler2 = Profiler.shared() 
+
+    _test_nested(profiler, profiler2)
 
     assert 'test' in profiler.all()
     assert 'test2' in profiler.all()
-
 
 
