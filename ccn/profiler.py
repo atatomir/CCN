@@ -59,8 +59,8 @@ class ProfilerManager:
 
 # Profiler that records data from the manager
 class Profiler:
-    def __init__(self):
-        self.watches = dict() 
+    def __init__(self, watches = None):
+        self.watches = dict() if watches is None else watches 
         self.manager = ProfilerManager()
 
     @classmethod
@@ -68,6 +68,10 @@ class Profiler:
         if not hasattr(cls, '_shared_'):
             cls._shared_ = cls() 
         return cls._shared_
+
+    def branch(self, name):
+        self.watches[name] = dict() 
+        return Profiler(self.watches[name])
 
     def register(self, name, value):
         if not name in self.watches: 
@@ -96,23 +100,31 @@ class Profiler:
     def reset(self):
         self.watches.clear()
 
+    @classmethod
+    def map_dict(cls, f, node):
+        result = dict()
+        for key in node:
+            if isinstance(node[key], dict):
+                result[key] = cls.map_dict(f, node[key])
+            else:
+                result[key] = f(node[key])
+        return result
+
     def all(self):
         return self.watches
     
     def sum(self):
-        result = dict()
-        for key in self.watches: result[key] = sum(self.watches[key])
-        return result
+        return Profiler.map_dict(lambda x: sum(x), self.watches)
 
     def max(self):
-        result = dict()
-        for key in self.watches: result[key] = max(self.watches[key])
-        return result
+        return Profiler.map_dict(lambda x: max(x), self.watches)
 
     def maximum(self):
-        pre = self.max()
         result = 0
-        for key in pre: result = max(result, pre[key])
+        def update(x):
+            nonlocal result
+            result = max(result, max(x))
+        Profiler.map_dict(update, self.watches)
         return result
 
 

@@ -1,3 +1,4 @@
+from importlib_metadata import requires
 import numpy as np
 import pytest
 import json
@@ -18,6 +19,8 @@ class ConstraintsLayer(nn.Module):
 
         # ConstraintsLayer([ConstraintsGroup], int)
         self.num_classes = num_classes
+        self.atoms = nn.Parameter(torch.tensor(list(range(num_classes))), requires_grad=False)
+
         modules = [ConstraintsModule(stratum, num_classes) for stratum in strata]
         self.module_list = nn.ModuleList(modules)
 
@@ -51,12 +54,22 @@ class ConstraintsLayer(nn.Module):
     def slicer(self, ratio):
         atoms, modules = self.gradual_prefix(ratio)
         return Slicer(atoms, modules)
+    
+    def to_minimal(self, tensor):
+        return tensor[:, self.atoms].reshape(tensor.shape[0], len(self.atoms))
+
+    def from_minimal(self, tensor, init):
+        return init.index_copy(1, self.atoms, tensor)
         
-    def forward(self, x, goal=None, iterative=True, slicer=None):
+    def forward(self, preds, goal=None, iterative=True, slicer=None):
+        updated = self.to_minimal(preds)
+        goal = None if goal is None else self.to_minimal(goal)
+
         modules = self.module_list if slicer is None else slicer.slice_modules(self.module_list)
         for module in modules:
-            x = module(x, goal=goal, iterative=iterative)
-        return x
+            updated = module(updated, goal=goal, iterative=iterative)
+
+        return self.from_minimal(updated, preds)
 
 def test_gradual_atoms():
     groups = [ 
@@ -162,7 +175,7 @@ def test_no_clauses_cuda():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_cuda_memory():
     torch.cuda.empty_cache()
-    profiler = Profiler()
+    profiler = Profiler.shared().branch("layer")
     ConstraintsModule.profiler.reset()
 
     device = 'cuda'
@@ -188,9 +201,10 @@ def test_cuda_memory():
 
     #print(torch.cuda.memory_summary(abbreviated=True))
     
-    print(json.dumps(profiler.max(), indent=4, sort_keys=True))
-    print(json.dumps(ConstraintsModule.profiler.max(), indent=4, sort_keys=True))
-    print(json.dumps(ConstraintsModule.profiler.sum(), indent=4, sort_keys=True))
+    print("\n--------- Max ---------\n")
+    print(json.dumps(Profiler.shared().max(), indent=4, sort_keys=True))
+    print("\n--------- Sum ---------\n")
+    print(json.dumps(Profiler.shared().sum(), indent=4, sort_keys=True))
     assert profiler.maximum() < 1
 
 

@@ -11,8 +11,9 @@ from .constraints_group import ConstraintsGroup
 from .profiler import Profiler
 
 class ConstraintsModule(nn.Module):
-    profiler = Profiler.shared()
+    profiler = Profiler.shared().branch('cm')
 
+    @profiler.wrap
     def __init__(self, constraints_group, num_classes):
         super(ConstraintsModule, self).__init__()
         head, body = constraints_group.encoded(num_classes)
@@ -120,53 +121,51 @@ class ConstraintsModule(nn.Module):
         zeros = torch.zeros(batch, 1, device=device)
         ones = torch.ones(batch, device=device)
 
-        profiler = ConstraintsModule.profiler
+        profiler = ConstraintsModule.profiler.branch('iter')
 
-        with profiler.watch('iter_init'):
+        with profiler.watch('init'):
             lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
             ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
 
         for c, lit in enumerate(self.heads):
             # slice positive and negative body preds
-            with profiler.watch('iter_where'):
+            with profiler.watch('where'):
                 pos_where = self.pos_body[c].bool()
                 neg_where = self.neg_body[c].bool()
 
-            with profiler.watch('iter_body'):
+            with profiler.watch('body'):
                 pos_body = 1 - preds[:, pos_where]
                 neg_body = preds[:, neg_where]
 
             # clear masked literals 
-            with profiler.watch('iter_mask'):
+            with profiler.watch('mask'):
                 if not body_mask is None:
                     pos_body = pos_body * (1 - body_mask[:, pos_where])
                     neg_body = neg_body * body_mask[:, neg_where]
 
             # compute inferred values
-            with profiler.watch('iter_candidate'):
-                with profiler.watch('iter_candidate_cat'):
-                    candidate = torch.cat((zeros, pos_body, neg_body), dim=1)
-                with profiler.watch('iter_candidate_max'):
-                    candidate = 1 - candidate.max(dim=1).values
+            with profiler.watch('candidate'):
+                candidate = torch.cat((zeros, pos_body, neg_body), dim=1)
+                candidate = 1 - candidate.max(dim=1).values
 
-            # with profiler.watch('iter_candidate2'):
+            # with profiler.watch('candidate2'):
             #     c1 = pos_body.max(dim=1).values if pos_body.shape[1] > 0 else ones
             #     c2 = neg_body.max(dim=1).values if neg_body.shape[1] > 0 else ones
             #     candidate = 1 - torch.maximum(c1, c2)
 
             # clear inactive constraints
-            with profiler.watch('iter_active_cons'):
+            with profiler.watch('active_cons'):
                 if not active_constraints is None:
                     candidate = candidate * active_constraints[:, c]
 
             # update preds
-            with profiler.watch('iter_min_max'):
+            with profiler.watch('min_max'):
                 if lit.positive:
                     lb[lit.atom] = torch.maximum(lb[lit.atom], candidate)
                 else:
                     ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
 
-        with profiler.watch('iter_lb_ub'):
+        with profiler.watch('lb_ub'):
             lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
             lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
             updated = torch.maximum(lb, torch.minimum(ub, preds))
