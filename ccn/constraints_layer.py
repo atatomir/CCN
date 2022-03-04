@@ -205,7 +205,7 @@ def test_cuda_memory():
     print(json.dumps(Profiler.shared().max(), indent=4, sort_keys=True))
     print("\n--------- Sum ---------\n")
     print(json.dumps(Profiler.shared().sum(), indent=4, sort_keys=True))
-    assert profiler.maximum() < 1
+    assert profiler.maximum() < -1
 
 
 

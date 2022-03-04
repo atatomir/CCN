@@ -97,9 +97,6 @@ class Profiler:
                 return f(*args, **kwargs)
         return profiled
 
-    def reset(self):
-        self.watches.clear()
-
     @classmethod
     def map_dict(cls, f, node):
         result = dict()
@@ -109,6 +106,12 @@ class Profiler:
             else:
                 result[key] = f(node[key])
         return result
+
+    def reset(self):
+        def zero(x):
+            x.clear()
+            x.append(0)
+        Profiler.map_dict(zero, self.watches)
 
     def all(self):
         return self.watches
@@ -179,7 +182,7 @@ def test_one_profiler():
     assert results == 30.
 
     profiler.reset()
-    assert len(profiler.all()) == 0
+    assert profiler.maximum() == 0
 
 def _test_nested(profiler, profiler2):
     device = 'cuda'
