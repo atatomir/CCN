@@ -7,6 +7,7 @@ from torch import nn
 from .literal import Literal
 from .constraint import Constraint
 from .constraints_group import ConstraintsGroup
+from .profiler import Profiler
 
 class ConstraintsModule(nn.Module):
     def __init__(self, constraints_group, num_classes):

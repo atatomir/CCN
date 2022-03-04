@@ -85,6 +85,14 @@ class Profiler:
     def watch(self, name):
         return Watch(name, self)
 
+    def wrap(self, name):
+        def decorator(f):
+            def profiled(*args, **kwargs):
+                with self.watch(name):
+                    return f(*args, **kwargs)
+            return profiled
+        return decorator
+
     def reset(self):
         self.watches.clear()
 
@@ -113,7 +121,6 @@ class Watch:
 
     def __exit__(self, a, b, c):
         self.profiler.exit(self.name, self.reference)
-
 
 def test_one_manager():
     manger = ProfilerManager()
@@ -170,7 +177,6 @@ def _test_nested(profiler, profiler2):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_different_profilers():
-    device = 'cuda'
     profiler = Profiler()
     profiler2 = Profiler()
 
@@ -181,7 +187,6 @@ def test_different_profilers():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_shared():
-    device = 'cuda'
     profiler = Profiler.shared() 
     profiler2 = Profiler.shared() 
 
@@ -189,5 +194,20 @@ def test_shared():
 
     assert 'test' in profiler.all()
     assert 'test2' in profiler.all()
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_wrap():
+    device = 'cuda'
+    profiler = Profiler()
+
+    @profiler.wrap('f')
+    def f(n, a):
+        if n <= 1: return a 
+        return f(n - 1, a) + f(n - 2, a)
+
+    a = torch.rand(1024, 1024, device=device)
+    f(4, a)
+
+    assert profiler.all()['f'] == [0.0, 0.0, 4.0, 0.0, 8.0, 0.0, 0.0, 4.0, 12.0]
 
 
