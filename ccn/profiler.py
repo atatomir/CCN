@@ -1,6 +1,7 @@
 from cProfile import Profile
 import torch
 import pytest
+import functools
 
 # A stack with abstract operations:
 # - push & pop as usual
@@ -85,13 +86,12 @@ class Profiler:
     def watch(self, name):
         return Watch(name, self)
 
-    def wrap(self, name):
-        def decorator(f):
-            def profiled(*args, **kwargs):
-                with self.watch(name):
-                    return f(*args, **kwargs)
-            return profiled
-        return decorator
+    def wrap(self, f):
+        @functools.wraps(f)
+        def profiled(*args, **kwargs):
+            with self.watch(f.__name__):
+                return f(*args, **kwargs)
+        return profiled
 
     def reset(self):
         self.watches.clear()
@@ -200,7 +200,7 @@ def test_wrap():
     device = 'cuda'
     profiler = Profiler()
 
-    @profiler.wrap('f')
+    @profiler.wrap
     def f(n, a):
         if n <= 1: return a 
         return f(n - 1, a) + f(n - 2, a)
