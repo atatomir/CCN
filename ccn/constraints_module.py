@@ -59,12 +59,14 @@ class ConstraintsModule(nn.Module):
         return 2 * preds - 1
 
     @profiler.wrap
-    def to_minimal(self, tensor):
-        return tensor[:, self.atoms].reshape(tensor.shape[0], len(self.atoms))
+    def to_minimal(self, tensor, atoms = None):
+        if atoms is None: atoms = self.atoms
+        return tensor[:, atoms].reshape(tensor.shape[0], len(atoms))
 
     @profiler.wrap
-    def from_minimal(self, tensor, init):
-        return init.index_copy(1, self.atoms, tensor)
+    def from_minimal(self, tensor, init, atoms = None):
+        if atoms is None: atoms = self.atoms
+        return init.index_copy(1, atoms, tensor)
 
     # Get constraints with full sat body and those with unsat head
     @profiler.wrap
@@ -162,22 +164,22 @@ class ConstraintsModule(nn.Module):
                 else:
                     ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
 
-        if out_bounds:
-            return lb, ub
-
         with profiler.watch('lb_ub'):
+            if out_bounds:
+                return lb, ub
+
             lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
             lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
             updated = torch.maximum(lb, torch.minimum(ub, preds))
 
-        return updated
+            return updated
 
     @profiler.wrap
-    def apply(self, preds, iterative, active_constraints=None, body_mask=None):
+    def apply(self, preds, iterative):
         if iterative:
-            return self.apply_iter(preds, active_constraints, body_mask)
+            return self.apply_iter(preds)
         else:
-            return self.apply_tensor(preds, active_constraints, body_mask)
+            return self.apply_tensor(preds)
 
     @profiler.wrap 
     def apply_goal(self, preds, goal, iterative):
@@ -304,6 +306,7 @@ def test_empty_preds_constraints_cpu():
     _test_empty_preds('cpu')
     _test_no_constraints('cpu')
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_empty_preds_constraints_cuda():
     _test_empty_preds('cuda')
     _test_no_constraints('cuda')

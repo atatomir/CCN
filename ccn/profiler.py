@@ -38,14 +38,20 @@ def singleton(cls):
     constructor.__dict__.update(cls.__dict__)
     return constructor
 
-def get_allocated():
-    return torch.cuda.memory_allocated()
+def no_cuda():
+    return not torch.cuda.is_available()
 
-def get_peak():
-    return torch.cuda.max_memory_allocated()
+def get_allocated(device=None):
+    if no_cuda(): return 0
+    return torch.cuda.memory_allocated(device)
 
-def reset_peak():
-    torch.cuda.reset_peak_memory_stats()
+def get_peak(device=None):
+    if no_cuda(): return 0
+    return torch.cuda.max_memory_allocated(device)
+
+def reset_peak(device=None):
+    if no_cuda(): return None
+    torch.cuda.reset_peak_memory_stats(device)
 
 # Manages the global cuda profiling data 
 @singleton
