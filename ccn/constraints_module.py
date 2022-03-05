@@ -267,7 +267,7 @@ def test_goal_cuda():
     _test_no_goal('cuda')
     _test_negative_goal('cuda')
     _test_positive_goal('cuda')
-    print(json.dumps(ConstraintsModule.profiler.max(), indent=4, sort_keys=True))
+    print(json.dumps(ConstraintsModule.profiler.combined(), indent=4, sort_keys=True))
 
 def _test_empty_preds(device):
     group = ConstraintsGroup([

@@ -64,29 +64,34 @@ class ProfilerManager:
 
 
 class Stats:
-    def __init__(self, start, peak, end):
-        self.peak = peak - start
-        self.end = end - start
+    def __init__(self, peak, diff, sum):
+        self.peak = peak
+        self.diff = diff
+        self.sum = sum
+
+    @classmethod
+    def single(cls, start, peak, end):
+        return cls(peak - start, end - start, end - start)
 
     @classmethod
     def normalised(cls, peak, end):
-        return cls(0, peak, end)
+        return cls.single(0, peak, end)
 
     @classmethod
     def null(cls):
         return cls.normalised(0, 0)
 
     def __add__(self, other):
-        return Stats.normalised(self.peak + other.peak, self.end + other.end)
+        return Stats(max(self.peak, other.peak), max(self.diff, other.diff), self.sum + other.sum)
 
     def __str__(self):
         return str(self.tuple)
 
-    def compose(self, other):
-        return Stats.normalised(max(self.peak, other.peak), max(self.end, other.end))
-
-    def tuple(self):
-        return (self.peak, self.end)
+    def tuple(self, long=True):
+        if long:
+            return (self.peak, self.diff, self.sum)
+        else:
+            return (self.peak, self.diff)
 
 
 # Profiler that records data from the manager
@@ -123,7 +128,7 @@ class Profiler:
     def exit(self, name, start, end):
         peak = self.manager.exit()
         [start, peak, end] = [Profiler.norm(x) for x in [start, peak, end]] 
-        stats = Stats(start, peak, end)
+        stats = Stats.single(start, peak, end)
         self.register(name, stats)
 
     def watch(self, name):
@@ -153,24 +158,16 @@ class Profiler:
         Profiler.map_dict(zero, self.watches)
 
     def all(self):
-        return Profiler.map_dict(lambda xs: [x.tuple() for x in xs], self.watches)
-    
-    def sum(self):
+        return Profiler.map_dict(lambda xs: [x.tuple(long=False) for x in xs], self.watches)
+
+    def combined(self):
         return Profiler.map_dict(lambda x: sum(x, Stats.null()).tuple(), self.watches)
 
-    def max(self):
-        def composer(xs):
-            acc = Stats.null()
-            for x in xs: acc = acc.compose(x)
-            return acc.tuple()
-        return Profiler.map_dict(composer, self.watches)
-
-    def maximum(self):
+    def total(self):
         result = Stats.null()
         def update(xs):
             nonlocal result
-            for x in xs:
-                result = result.compose(x)
+            for x in xs: result = result + x
         Profiler.map_dict(update, self.watches)
         return result.tuple()
 
@@ -187,6 +184,7 @@ class Watch:
     def __exit__(self, a, b, c):
         self.end = get_allocated()
         self.profiler.exit(self.name, self.start, self.end)
+
 
 def test_one_manager():
     manger = ProfilerManager()
@@ -217,18 +215,18 @@ def test_one_profiler():
     assert results['B + C'] == [(24.0, 24.0), (16.0, 0.0), (16.0, 0.0)]
     assert results['out + A + B + C'] == [(30.0, 30.0), (16.0, 0.0), (16.0, 0.0)]
 
-    results = profiler.max()
-    assert results['A'] == (4., 4.)
-    assert results['B'] == (16., 16.) 
-    assert results['C'] == (8., 8.) 
-    assert results['B + C'] == (24., 24.) 
-    assert results['out + A + B + C'] == (30., 30.)
+    results = profiler.combined()
+    assert results['A'] == (4., 4., 4.)
+    assert results['B'] == (16., 16., 16.) 
+    assert results['C'] == (8., 8., 8.) 
+    assert results['B + C'] == (24., 24., 24.) 
+    assert results['out + A + B + C'] == (30., 30., 30.)
 
-    results = profiler.maximum()
-    assert results == (30., 30.)
+    results = profiler.total()
+    assert results == (30., 30., 82.)
 
     profiler.reset()
-    assert profiler.maximum() == (0, 0)
+    assert profiler.total() == (0, 0, 0)
 
 def _test_nested(profiler, profiler2):
     device = 'cuda'
@@ -247,8 +245,8 @@ def test_different_profilers():
     profiler2 = Profiler()
 
     _test_nested(profiler, profiler2)
-    assert profiler.maximum() == (5., 4.25)
-    assert profiler2.maximum() == (1., 0.25)
+    assert profiler.total() == (5., 4.25, 4.25)
+    assert profiler2.total() == (1., 0.25, 0.25)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")

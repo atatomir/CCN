@@ -205,12 +205,9 @@ def test_cuda_memory():
 
     #print(torch.cuda.memory_summary(abbreviated=True))
     
-    print("\n--------- Max ---------\n")
-    print(json.dumps(Profiler.shared().max(), indent=4, sort_keys=True))
-    print("\n--------- Sum ---------\n")
-    print(json.dumps(Profiler.shared().sum(), indent=4, sort_keys=True))
+    print(json.dumps(Profiler.shared().combined(), indent=4, sort_keys=True))
     
-    results = profiler.maximum()
+    results = profiler.total()
     assert results[0] <= -1
     assert results[1] <= -1
 
