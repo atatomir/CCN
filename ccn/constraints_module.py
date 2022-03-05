@@ -143,7 +143,7 @@ class ConstraintsModule(nn.Module):
                     pos_body = pos_body * (1 - body_mask[:, pos_where])
                     neg_body = neg_body * body_mask[:, neg_where]
 
-            # compute inferred values
+            # compute maximal inverted values
             with profiler.watch('candidate'):
                 candidate = torch.cat((zeros, pos_body, neg_body), dim=1)
                 candidate = 1 - candidate.max(dim=1).values
@@ -181,32 +181,23 @@ class ConstraintsModule(nn.Module):
         
     @profiler.wrap
     def forward(self, preds, goal = None, iterative=True):
+        if len(preds) == 0 or len(self.atoms) == 0:
+            return preds
+
+        if goal is None:
+            updated = self.to_minimal(preds)
+            updated = self.apply(updated, iterative=iterative)
+            return self.from_minimal(updated, preds)
     
-        profiler = ConstraintsModule.profiler.branch('pre')
-        with profiler.watch('all'):
+        updated = self.to_minimal(preds)
+        goal = self.to_minimal(goal)
+        
+        # apply full-body and unsat-head constraints according to CLoss
+        full_body, unsat_head = self.active_constraints(goal)
+        updated = self.apply(updated, active_constraints=full_body, iterative=iterative)
+        updated = self.apply(updated, active_constraints=unsat_head, body_mask=goal, iterative=iterative)
 
-            if len(preds) == 0 or len(self.atoms) == 0:
-                return preds
-
-
-            with profiler.watch('no_goal'):
-                if goal is None:
-                    updated = self.to_minimal(preds)
-                    updated = self.apply(updated, iterative=iterative)
-                    return self.from_minimal(updated, preds)
-            
-            with profiler.watch('to_minimal'):
-                updated = self.to_minimal(preds)
-                goal = self.to_minimal(goal)
-            
-            # apply full-body and unsat-head constraints according to CLoss
-            with profiler.watch('updates'):
-                full_body, unsat_head = self.active_constraints(goal)
-                updated = self.apply(updated, active_constraints=full_body, iterative=iterative)
-                updated = self.apply(updated, active_constraints=unsat_head, body_mask=goal, iterative=iterative)
-
-            with profiler.watch('from_minimal'):
-                return self.from_minimal(updated, preds)
+        return self.from_minimal(updated, preds)
 
 def test_symmetric():
     pos = torch.from_numpy(np.arange(0., 1., 0.1))

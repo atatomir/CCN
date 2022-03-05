@@ -197,7 +197,11 @@ def test_cuda_memory():
         with profiler.watch('sum'):
             summed = preds + extra
         with profiler.watch('layer'):
-            layer(summed, goal=goal, iterative=True)
+            result = layer(summed, goal=goal, iterative=True)
+        with profiler.watch('loss'):
+            result = result.sum()
+        with profiler.watch('backward'):
+            result.backward()
 
     #print(torch.cuda.memory_summary(abbreviated=True))
     
@@ -205,7 +209,10 @@ def test_cuda_memory():
     print(json.dumps(Profiler.shared().max(), indent=4, sort_keys=True))
     print("\n--------- Sum ---------\n")
     print(json.dumps(Profiler.shared().sum(), indent=4, sort_keys=True))
-    assert profiler.maximum() < -1
+    
+    results = profiler.maximum()
+    assert results[0] <= -1
+    assert results[1] <= -1
 
 
 

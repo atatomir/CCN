@@ -29,11 +29,23 @@ class MaxStack:
         return value
 
 def singleton(cls):
+    @functools.wraps(cls)
     def constructor(*args, **kwargs):
         if not hasattr(cls, '_instance_'):
             cls._instance_ = cls(*args, **kwargs)
         return cls._instance_ 
+
+    constructor.__dict__.update(cls.__dict__)
     return constructor
+
+def get_allocated():
+    return torch.cuda.memory_allocated()
+
+def get_peak():
+    return torch.cuda.max_memory_allocated()
+
+def reset_peak():
+    torch.cuda.reset_peak_memory_stats()
 
 # Manages the global cuda profiling data 
 @singleton
@@ -41,21 +53,41 @@ class ProfilerManager:
     def __init__(self):
         self.stack = MaxStack()
 
-    def get_peak(self):
-        return torch.cuda.max_memory_allocated()
-
-    def reset_peak(self):
-        torch.cuda.reset_peak_memory_stats()
-
     def enter(self):
-        self.stack.update(self.get_peak())
-        self.reset_peak()
+        self.stack.update(get_peak())
+        reset_peak()
         self.stack.push(0)
-        return self.get_peak()
 
     def exit(self):
-        self.stack.update(self.get_peak())
+        self.stack.update(get_peak())
         return self.stack.pop()
+
+
+class Stats:
+    def __init__(self, start, peak, end):
+        self.peak = peak - start
+        self.end = end - start
+
+    @classmethod
+    def normalised(cls, peak, end):
+        return cls(0, peak, end)
+
+    @classmethod
+    def null(cls):
+        return cls.normalised(0, 0)
+
+    def __add__(self, other):
+        return Stats.normalised(self.peak + other.peak, self.end + other.end)
+
+    def __str__(self):
+        return str(self.tuple)
+
+    def compose(self, other):
+        return Stats.normalised(max(self.peak, other.peak), max(self.end, other.end))
+
+    def tuple(self):
+        return (self.peak, self.end)
+
 
 # Profiler that records data from the manager
 class Profiler:
@@ -68,6 +100,10 @@ class Profiler:
         if not hasattr(cls, '_shared_'):
             cls._shared_ = cls() 
         return cls._shared_
+
+    @staticmethod
+    def norm(x):
+        return x / 1024 / 1024
 
     # TODO: Add testing for braches
     def branch(self, name):
@@ -84,10 +120,11 @@ class Profiler:
     def enter(self):
         return self.manager.enter()
 
-    def exit(self, name, reference):
-        value = self.manager.exit()
-        value = (value - reference) / 1024 / 1024
-        self.register(name, value)
+    def exit(self, name, start, end):
+        peak = self.manager.exit()
+        [start, peak, end] = [Profiler.norm(x) for x in [start, peak, end]] 
+        stats = Stats(start, peak, end)
+        self.register(name, stats)
 
     def watch(self, name):
         return Watch(name, self)
@@ -112,25 +149,30 @@ class Profiler:
     def reset(self):
         def zero(x):
             x.clear()
-            x.append(0)
+            x.append(Stats.null())
         Profiler.map_dict(zero, self.watches)
 
     def all(self):
-        return self.watches
+        return Profiler.map_dict(lambda xs: [x.tuple() for x in xs], self.watches)
     
     def sum(self):
-        return Profiler.map_dict(lambda x: sum(x), self.watches)
+        return Profiler.map_dict(lambda x: sum(x, Stats.null()).tuple(), self.watches)
 
     def max(self):
-        return Profiler.map_dict(lambda x: max(x), self.watches)
+        def composer(xs):
+            acc = Stats.null()
+            for x in xs: acc = acc.compose(x)
+            return acc.tuple()
+        return Profiler.map_dict(composer, self.watches)
 
     def maximum(self):
-        result = 0
-        def update(x):
+        result = Stats.null()
+        def update(xs):
             nonlocal result
-            result = max(result, max(x))
+            for x in xs:
+                result = result.compose(x)
         Profiler.map_dict(update, self.watches)
-        return result
+        return result.tuple()
 
 
 class Watch:
@@ -139,10 +181,12 @@ class Watch:
         self.profiler = profiler
 
     def __enter__(self):
-        self.reference = self.profiler.enter()
+        self.start = get_allocated()
+        self.profiler.enter()
 
     def __exit__(self, a, b, c):
-        self.profiler.exit(self.name, self.reference)
+        self.end = get_allocated()
+        self.profiler.exit(self.name, self.start, self.end)
 
 def test_one_manager():
     manger = ProfilerManager()
@@ -167,24 +211,24 @@ def test_one_profiler():
                     c = torch.rand(1024, 2048, device=device)
     
     results = profiler.all()
-    assert results['A'] == [4., 4., 4.]
-    assert results['B'] == [16., 16., 16.]
-    assert results['C'] == [8., 8., 8.]
-    assert results['B + C'] == [24., 16., 16.]
-    assert results['out + A + B + C'] == [30., 16., 16.]
+    assert results['A'] == [(4.0, 4.0), (4.0, 0.0), (4.0, 0.0)]
+    assert results['B'] == [(16.0, 16.0), (16.0, 0.0), (16.0, 0.0)]
+    assert results['C'] == [(8.0, 8.0), (8.0, 0.0), (8.0, 0.0)]
+    assert results['B + C'] == [(24.0, 24.0), (16.0, 0.0), (16.0, 0.0)]
+    assert results['out + A + B + C'] == [(30.0, 30.0), (16.0, 0.0), (16.0, 0.0)]
 
     results = profiler.max()
-    assert results['A'] == 4.
-    assert results['B'] == 16. 
-    assert results['C'] == 8. 
-    assert results['B + C'] == 24. 
-    assert results['out + A + B + C'] == 30.
+    assert results['A'] == (4., 4.)
+    assert results['B'] == (16., 16.) 
+    assert results['C'] == (8., 8.) 
+    assert results['B + C'] == (24., 24.) 
+    assert results['out + A + B + C'] == (30., 30.)
 
     results = profiler.maximum()
-    assert results == 30.
+    assert results == (30., 30.)
 
     profiler.reset()
-    assert profiler.maximum() == 0
+    assert profiler.maximum() == (0, 0)
 
 def _test_nested(profiler, profiler2):
     device = 'cuda'
@@ -203,8 +247,8 @@ def test_different_profilers():
     profiler2 = Profiler()
 
     _test_nested(profiler, profiler2)
-    assert profiler.maximum() == 5.
-    assert profiler2.maximum() == 1.
+    assert profiler.maximum() == (5., 4.25)
+    assert profiler2.maximum() == (1., 0.25)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
@@ -230,6 +274,6 @@ def test_wrap():
     a = torch.rand(1024, 1024, device=device)
     f(4, a)
 
-    assert profiler.all()['f'] == [0.0, 0.0, 4.0, 0.0, 8.0, 0.0, 0.0, 4.0, 12.0]
+    assert profiler.all()['f'] == [(0.0, 0.0), (0.0, 0.0), (4.0, 4.0), (0.0, 0.0), (8.0, 4.0), (0.0, 0.0), (0.0, 0.0), (4.0, 4.0), (12.0, 4.0)]
 
 
