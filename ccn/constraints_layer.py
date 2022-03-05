@@ -121,7 +121,7 @@ def test_two_modules():
 
 def _test_many_clauses(centrality, device, batch=1500, max_clauses=150, backward=False):
     num_classes = 30
-    assignment = np.array([np.random.randint(low=0, high=2, size=num_classes)])
+    assignment = np.random.randint(low=0, high=2, size=(1, num_classes))
     clauses = ClausesGroup.random(max_clauses=max_clauses, num_classes=num_classes, coherent_with=assignment)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=num_classes, centrality=centrality)
     preds = torch.rand((batch, num_classes))
@@ -206,12 +206,9 @@ def test_cuda_memory():
     #print(torch.cuda.memory_summary(abbreviated=True))
     
     print(json.dumps(Profiler.shared().combined(), indent=4, sort_keys=True))
-    print(json.dumps(ConstraintsModule.profiler.branch('iter').combined(), indent=4, sort_keys=True))
 
-    
     results = profiler.total()
-    assert results[0] <= -1
-    assert results[1] <= -1
+    assert results[0] <= 35
 
 
 
