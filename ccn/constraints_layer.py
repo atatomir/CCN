@@ -206,6 +206,8 @@ def test_cuda_memory():
     #print(torch.cuda.memory_summary(abbreviated=True))
     
     print(json.dumps(Profiler.shared().combined(), indent=4, sort_keys=True))
+    print(json.dumps(ConstraintsModule.profiler.branch('iter').combined(), indent=4, sort_keys=True))
+
     
     results = profiler.total()
     assert results[0] <= -1

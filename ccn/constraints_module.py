@@ -113,19 +113,21 @@ class ConstraintsModule(nn.Module):
 
     # Apply constraints iteratively with 2D matrices
     @profiler.wrap
-    def apply_iterative(self, preds, active_constraints=None, body_mask=None):
+    def apply_iter(self, preds, active_constraints=None, body_mask=None, in_bounds=None, out_bounds=False):
         batch, num, cons = self.dimensions(preds)
         device = 'cpu' if preds.get_device() < 0 else 'cuda'
 
         if not active_constraints is None: active_constraints = active_constraints.float()
         zeros = torch.zeros(batch, 1, device=device)
-        ones = torch.ones(batch, device=device)
 
         profiler = ConstraintsModule.profiler.branch('iter')
 
         with profiler.watch('init'):
-            lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
-            ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
+            if in_bounds is None:
+                lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
+                ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
+            else: 
+                lb, ub = in_bounds
 
         for c, lit in enumerate(self.heads):
             # slice positive and negative body preds
@@ -148,11 +150,6 @@ class ConstraintsModule(nn.Module):
                 candidate = torch.cat((zeros, pos_body, neg_body), dim=1)
                 candidate = 1 - candidate.max(dim=1).values
 
-            # with profiler.watch('candidate2'):
-            #     c1 = pos_body.max(dim=1).values if pos_body.shape[1] > 0 else ones
-            #     c2 = neg_body.max(dim=1).values if neg_body.shape[1] > 0 else ones
-            #     candidate = 1 - torch.maximum(c1, c2)
-
             # clear inactive constraints
             with profiler.watch('active_cons'):
                 if not active_constraints is None:
@@ -165,6 +162,9 @@ class ConstraintsModule(nn.Module):
                 else:
                     ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
 
+        if out_bounds:
+            return lb, ub
+
         with profiler.watch('lb_ub'):
             lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
             lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
@@ -175,29 +175,38 @@ class ConstraintsModule(nn.Module):
     @profiler.wrap
     def apply(self, preds, iterative, active_constraints=None, body_mask=None):
         if iterative:
-            return self.apply_iterative(preds, active_constraints, body_mask)
+            return self.apply_iter(preds, active_constraints, body_mask)
         else:
             return self.apply_tensor(preds, active_constraints, body_mask)
+
+    @profiler.wrap 
+    def apply_goal(self, preds, goal, iterative):
+        full_body, unsat_head = self.active_constraints(goal)
+        body_mask = goal
+        
+        if iterative:
+            bounds = self.apply_iter(preds, active_constraints=full_body, out_bounds=True)
+            updated = self.apply_iter(preds, active_constraints=unsat_head, body_mask=body_mask, in_bounds=bounds)
+        else:
+            updated = self.apply_tensor(preds, active_constraints=full_body)
+            updated = self.apply_tensor(updated, active_constraints=unsat_head, body_mask=body_mask) 
+
+        return updated
         
     @profiler.wrap
     def forward(self, preds, goal = None, iterative=True):
         if len(preds) == 0 or len(self.atoms) == 0:
             return preds
 
+        updated = self.to_minimal(preds)
+
         if goal is None:
-            updated = self.to_minimal(preds)
             updated = self.apply(updated, iterative=iterative)
             return self.from_minimal(updated, preds)
-    
-        updated = self.to_minimal(preds)
-        goal = self.to_minimal(goal)
-        
-        # apply full-body and unsat-head constraints according to CLoss
-        full_body, unsat_head = self.active_constraints(goal)
-        updated = self.apply(updated, active_constraints=full_body, iterative=iterative)
-        updated = self.apply(updated, active_constraints=unsat_head, body_mask=goal, iterative=iterative)
-
-        return self.from_minimal(updated, preds)
+        else:
+            goal = self.to_minimal(goal)
+            updated = self.apply_goal(updated, goal=goal, iterative=iterative)
+            return self.from_minimal(updated, preds)
 
 def test_symmetric():
     pos = torch.from_numpy(np.arange(0., 1., 0.1))
