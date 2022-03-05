@@ -119,10 +119,10 @@ def test_two_modules():
     updated = run_layer(layer, preds)
     assert group.coherent_with(updated.numpy()).all()
 
-def _test_many_clauses(centrality, device, batch=1500, max_clauses=150, backward=False):
+def _test_many_clauses(centrality, device, batch=1500, max_clauses=150, goals=5, backward=False):
     num_classes = 30
-    assignment = np.random.randint(low=0, high=2, size=(1, num_classes))
-    clauses = ClausesGroup.random(max_clauses=max_clauses, num_classes=num_classes, coherent_with=assignment)
+    goal = np.random.randint(low=0, high=2, size=(goals, num_classes))
+    clauses = ClausesGroup.random(min_clauses=min(10, max_clauses), max_clauses=max_clauses, num_classes=num_classes, coherent_with=goal)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes=num_classes, centrality=centrality)
     preds = torch.rand((batch, num_classes))
 

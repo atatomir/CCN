@@ -24,6 +24,9 @@ class ClausesGroup:
         if not isinstance(other, ClausesGroup): return False
         return self.clauses == other.clauses
 
+    def __add__(self, other):
+        return ClausesGroup(self.clauses.union(other.clauses))
+
     def __str__(self):
         return '\n'.join([str(clause) for clause in self.clauses])
 
@@ -32,17 +35,23 @@ class ClausesGroup:
 
     def __iter__(self):
         return iter(self.clauses)
+
     
     @classmethod 
-    def random(cls, max_clauses, num_classes, coherent_with=np.array([])):
-        clauses_count = np.random.randint(low=0, high=max_clauses + 1)
-        clauses = [Clause.random(num_classes) for i in range(clauses_count)]
+    def random(cls, max_clauses, num_classes, coherent_with=np.array([]), min_clauses=0):
+        assert min_clauses <= max_clauses
+        clauses = [Clause.random(num_classes) for i in range(max_clauses)]
 
         if len(coherent_with) > 0:
             keep = cls(clauses).coherent_with(coherent_with).all(axis=0)
             clauses = np.array(clauses)[keep].tolist()
 
-        return cls(clauses)
+        found = len(clauses)
+        if found < min_clauses:
+            other = cls.random(max_clauses - found, num_classes, coherent_with=coherent_with, min_clauses=min_clauses - found)
+            return cls(clauses) + other
+        else:
+            return cls(clauses)
 
     def compacted(self):
         clauses = list(self.clauses)
