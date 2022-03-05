@@ -69,8 +69,10 @@ class Profiler:
             cls._shared_ = cls() 
         return cls._shared_
 
+    # TODO: Add testing for braches
     def branch(self, name):
-        self.watches[name] = dict() 
+        if not name in self.watches:
+            self.watches[name] = dict() 
         return Profiler(self.watches[name])
 
     def register(self, name, value):
