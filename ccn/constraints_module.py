@@ -117,7 +117,7 @@ class ConstraintsModule(nn.Module):
     @profiler.wrap
     def apply_iter(self, preds, active_constraints=None, body_mask=None, in_bounds=None, out_bounds=False):
         batch, num, cons = self.dimensions(preds)
-        device = 'cpu' if preds.get_device() < 0 else 'cuda'
+        device = preds.device
 
         if not active_constraints is None: active_constraints = active_constraints.float()
         zeros = torch.zeros(batch, 1, device=device)
