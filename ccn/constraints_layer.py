@@ -179,13 +179,14 @@ def test_cuda_memory():
     ConstraintsModule.profiler.reset()
 
     device = 'cuda'
-    num_classes = 41
+    num_classes = 42
     total_classes = num_classes + 100
     batch = 1000
 
     constraints = ConstraintsGroup('../constraints/full')
     clauses = ClausesGroup.from_constraints_group(constraints)
-    layer = ConstraintsLayer.from_clauses_group(clauses, num_classes, 'katz').to(device)
+    clauses = clauses.shift_add_n0()
+    layer = ConstraintsLayer.from_clauses_group(clauses, num_classes, 'rev-katz').to(device)
 
     with profiler.watch('complete'):
         with profiler.watch('preds'):
@@ -208,7 +209,7 @@ def test_cuda_memory():
     print(json.dumps(Profiler.shared().combined(), indent=4, sort_keys=True))
 
     results = profiler.total()
-    assert results[0] <= 35
+    assert results[0] <= 20
 
 
 

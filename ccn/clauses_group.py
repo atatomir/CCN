@@ -53,6 +53,11 @@ class ClausesGroup:
         else:
             return cls(clauses)
 
+    def shift_add_n0(self):
+        n0 = Literal(0, False)
+        clauses = [clause.shift_add_n0() for clause in self]
+        return ClausesGroup(clauses)
+
     def compacted(self):
         clauses = list(self.clauses)
         clauses.sort(reverse=True, key=len)
@@ -177,6 +182,23 @@ def test_eq():
     c3 = Clause('1 3 n3')
     assert ClausesGroup([c1, c2, c3]) == ClausesGroup([c3, c2, c1, c1])
     assert ClausesGroup([c1, c2]) != ClausesGroup([c3, c2, c1, c1])
+
+def test_shift_add_n0():
+    before = ClausesGroup([
+        Clause('0 n1 2 n3'),
+        Clause('0'),
+        Clause('n1'),
+        Clause('n2 5') 
+    ])
+
+    after = ClausesGroup([
+        Clause('n0 1 n2 3 n4'),
+        Clause('n0 1'),
+        Clause('n0 n2'),
+        Clause('n0 n3 6') 
+    ])  
+    
+    assert before.shift_add_n0() == after
 
 def test_resolution():
     c1 = Clause('1 2 3')

@@ -44,6 +44,10 @@ class Clause:
         literals = [Literal(atom, atom in pos) for atom in atoms]
         return cls(literals)
 
+    def shift_add_n0(self):
+        n0 = Literal(0, False)
+        return Clause([Literal(lit.atom + 1, lit.positive) for lit in self] + [n0])
+
     def fix_head(self, head):
         if not head in self.literals:
             raise Exception('Head not in clause')
@@ -95,6 +99,9 @@ def test_eq():
 def test_str():
     assert str(Clause('1 n2 1 2')) == '1 n2 2'
     assert str(Clause([Literal('1'), Literal('n2'), Literal('1'), Literal('2')])) == '1 n2 2'
+
+def test_shift_add_n0():
+    assert Clause('0 n1 2 n3').shift_add_n0() == Clause('n0 1 n2 3 n4')
 
 def test_always_true():
     assert not Clause('1 2 n3').always_true()
