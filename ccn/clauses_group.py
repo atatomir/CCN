@@ -108,18 +108,33 @@ class ClausesGroup:
 
     def centrality(self, centrality):
         G = self.graph() 
+        
+        if centrality.startswith('rev-'):
+            centrality = centrality[4:]
+            rev = True 
+        else:
+            rev = False
+
         if centrality == 'degree':
-            return nx.algorithms.centrality.degree_centrality(G)
+            result = nx.algorithms.centrality.degree_centrality(G)
         elif centrality == 'eigenvector':
-            return nx.algorithms.centrality.eigenvector_centrality_numpy(G)
+            result = nx.algorithms.centrality.eigenvector_centrality_numpy(G)
         elif centrality == 'katz':
-            return nx.algorithms.centrality.katz_centrality_numpy(G)
+            result = nx.algorithms.centrality.katz_centrality_numpy(G)
         elif centrality == 'closeness':
-            return nx.algorithms.centrality.closeness_centrality(G)
+            result = nx.algorithms.centrality.closeness_centrality(G)
         elif centrality == 'betweenness':
-            return nx.algorithms.centrality.betweenness_centrality(G)
+            result = nx.algorithms.centrality.betweenness_centrality(G)
         else:
             raise Exception(f"Unknown centrality {centrality}")
+
+        # Normalize results
+        if rev:
+            values = np.array([result[node] for node in result])
+            mini, maxi = values.min(), values.max()
+            for node in result: result[node] = maxi - (result[node] - mini)
+
+        return result 
 
     def stratify(self, centrality):
         # Centrality guides the inferrence order  
