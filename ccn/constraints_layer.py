@@ -181,7 +181,7 @@ def test_cuda_memory():
     device = 'cuda'
     num_classes = 42
     total_classes = num_classes + 100
-    batch = 1000
+    batch = 1000 
 
     constraints = ConstraintsGroup('../constraints/full')
     clauses = ClausesGroup.from_constraints_group(constraints)
