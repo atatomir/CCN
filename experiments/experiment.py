@@ -10,7 +10,7 @@ from ccn import ConstraintsLayer, train, test, draw_classes
 from shapes import ShapeDataset
 
 class Experiment:
-    def __init__(self, name, model, shapes, constraints, points = 10000):
+    def __init__(self, name, model, shapes, constraints, points = 1000):
         self.name = name
         self.model = model 
         self.shapes = shapes 
