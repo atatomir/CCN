@@ -208,8 +208,8 @@ def test_cuda_memory():
     
     print(json.dumps(Profiler.shared().combined(), indent=4, sort_keys=True))
 
-    results = profiler.total()
-    assert results[0] <= 20
+    results = profiler.total(kind='gpu')
+    assert results[0] <= 10
 
 
 

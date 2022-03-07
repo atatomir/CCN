@@ -2,6 +2,8 @@ from cProfile import Profile
 import torch
 import pytest
 import functools
+import datetime
+import time
 
 # A stack with abstract operations:
 # - push & pop as usual
@@ -55,7 +57,7 @@ def reset_peak(device=None):
 
 # Manages the global cuda profiling data 
 @singleton
-class ProfilerManager:
+class PeakMemoryManager:
     def __init__(self):
         self.stack = MaxStack()
 
@@ -70,41 +72,54 @@ class ProfilerManager:
 
 
 class Stats:
-    def __init__(self, peak, diff, sum):
+    def __init__(self, peak, diff, sum, tdiff, tsum):
         self.peak = peak
         self.diff = diff
         self.sum = sum
 
-    @classmethod
-    def single(cls, start, peak, end):
-        return cls(peak - start, end - start, end - start)
+        self.tdiff = tdiff 
+        self.tsum = tsum
 
     @classmethod
-    def normalised(cls, peak, end):
-        return cls.single(0, peak, end)
+    def single(cls, peak, diff, tdiff):
+        return cls(peak, diff, diff, tdiff, tdiff)
 
     @classmethod
     def null(cls):
-        return cls.normalised(0, 0)
+        return cls.single(0, 0, 0)
 
     def __add__(self, other):
-        return Stats(max(self.peak, other.peak), max(self.diff, other.diff), self.sum + other.sum)
+        return Stats(
+            max(self.peak, other.peak), 
+            max(self.diff, other.diff), 
+            self.sum + other.sum,
+            max(self.tdiff, other.tdiff),
+            self.tsum + other.tsum)
 
     def __str__(self):
         return str(self.tuple)
 
-    def tuple(self, long=True):
+    def memory(self, long=True):
         if long:
             return (self.peak, self.diff, self.sum)
         else:
             return (self.peak, self.diff)
+
+    def time(self, long=True):
+        if long: 
+            return (self.tdiff, self.tsum)
+        else:
+            return (self.tdiff,)
+
+    def tuple(self, long=True):
+        return (self.time(long), self.memory(long))
 
 
 # Profiler that records data from the manager
 class Profiler:
     def __init__(self, watches = None):
         self.watches = dict() if watches is None else watches 
-        self.manager = ProfilerManager()
+        self.manager = PeakMemoryManager()
 
     @classmethod
     def shared(cls):
@@ -116,26 +131,19 @@ class Profiler:
     def norm(x):
         return x / 1024 / 1024
 
-    # TODO: Add testing for braches
     def branch(self, name):
         if not name in self.watches:
             self.watches[name] = dict() 
         return Profiler(self.watches[name])
 
-    def register(self, name, value):
+    def register(self, name, peak, diff, tdiff):
+        [peak, diff] = [Profiler.norm(x) for x in [peak, diff]] 
+        stats = Stats.single(peak, diff, tdiff)
+
         if not name in self.watches: 
-            self.watches[name] = [value]
+            self.watches[name] = [stats]
         else: 
-            self.watches[name].append(value)
-
-    def enter(self):
-        return self.manager.enter()
-
-    def exit(self, name, start, end):
-        peak = self.manager.exit()
-        [start, peak, end] = [Profiler.norm(x) for x in [start, peak, end]] 
-        stats = Stats.single(start, peak, end)
-        self.register(name, stats)
+            self.watches[name].append(stats)
 
     def watch(self, name):
         return Watch(name, self)
@@ -163,19 +171,32 @@ class Profiler:
             x.append(Stats.null())
         Profiler.map_dict(zero, self.watches)
 
-    def all(self):
-        return Profiler.map_dict(lambda xs: [x.tuple(long=False) for x in xs], self.watches)
+    def get_kind(self, kind, long):
+        if kind == 'all':
+            return lambda x: x.tuple(long)
+        elif kind == 'gpu':
+            return lambda x: x.memory(long)
+        elif kind == 'time':
+            return lambda x: x.time(long)
+        else:
+            raise Exception(f"Unknown kind {kind}")
 
-    def combined(self):
-        return Profiler.map_dict(lambda x: sum(x, Stats.null()).tuple(), self.watches)
+    def all(self, kind='all'):
+        kinder = self.get_kind(kind, long=False)
+        return Profiler.map_dict(lambda xs: [kinder(x) for x in xs], self.watches)
 
-    def total(self):
+    def combined(self, kind='all'):
+        kinder = self.get_kind(kind, long=True)
+        return Profiler.map_dict(lambda x: kinder(sum(x, Stats.null())), self.watches)
+
+    def total(self, kind='all'):
+        kinder = self.get_kind(kind, long=True)
         result = Stats.null()
         def update(xs):
             nonlocal result
             for x in xs: result = result + x
         Profiler.map_dict(update, self.watches)
-        return result.tuple()
+        return kinder(result)
 
 
 class Watch:
@@ -185,16 +206,24 @@ class Watch:
 
     def __enter__(self):
         self.start = get_allocated()
-        self.profiler.enter()
+        self.tstart = datetime.datetime.now()
+        self.profiler.manager.enter()
 
     def __exit__(self, a, b, c):
+        self.peak = self.profiler.manager.exit()
         self.end = get_allocated()
-        self.profiler.exit(self.name, self.start, self.end)
+        self.tend = datetime.datetime.now()
+
+        peak = self.peak - self.start 
+        diff = self.end - self.start 
+        tdiff = (self.tend - self.tstart).total_seconds()
+
+        self.profiler.register(self.name, peak, diff, tdiff)
 
 
 def test_one_manager():
-    manger = ProfilerManager()
-    manager2 = ProfilerManager()
+    manger = PeakMemoryManager()
+    manager2 = PeakMemoryManager()
     assert id(manger) == id(manager2)
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
@@ -214,25 +243,25 @@ def test_one_profiler():
                 with profiler.watch('C'):
                     c = torch.rand(1024, 2048, device=device)
     
-    results = profiler.all()
+    results = profiler.all(kind='gpu')
     assert results['A'] == [(4.0, 4.0), (4.0, 0.0), (4.0, 0.0)]
     assert results['B'] == [(16.0, 16.0), (16.0, 0.0), (16.0, 0.0)]
     assert results['C'] == [(8.0, 8.0), (8.0, 0.0), (8.0, 0.0)]
     assert results['B + C'] == [(24.0, 24.0), (16.0, 0.0), (16.0, 0.0)]
     assert results['out + A + B + C'] == [(30.0, 30.0), (16.0, 0.0), (16.0, 0.0)]
 
-    results = profiler.combined()
+    results = profiler.combined(kind='gpu')
     assert results['A'] == (4., 4., 4.)
     assert results['B'] == (16., 16., 16.) 
     assert results['C'] == (8., 8., 8.) 
     assert results['B + C'] == (24., 24., 24.) 
     assert results['out + A + B + C'] == (30., 30., 30.)
 
-    results = profiler.total()
+    results = profiler.total(kind='gpu')
     assert results == (30., 30., 82.)
 
     profiler.reset()
-    assert profiler.total() == (0, 0, 0)
+    assert profiler.total(kind='gpu') == (0, 0, 0)
 
 def _test_nested(profiler, profiler2):
     device = 'cuda'
@@ -251,8 +280,8 @@ def test_different_profilers():
     profiler2 = Profiler()
 
     _test_nested(profiler, profiler2)
-    assert profiler.total() == (5., 4.25, 4.25)
-    assert profiler2.total() == (1., 0.25, 0.25)
+    assert profiler.total(kind='gpu') == (5., 4.25, 4.25)
+    assert profiler2.total(kind='gpu') == (1., 0.25, 0.25)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
@@ -278,6 +307,24 @@ def test_wrap():
     a = torch.rand(1024, 1024, device=device)
     f(4, a)
 
-    assert profiler.all()['f'] == [(0.0, 0.0), (0.0, 0.0), (4.0, 4.0), (0.0, 0.0), (8.0, 4.0), (0.0, 0.0), (0.0, 0.0), (4.0, 4.0), (12.0, 4.0)]
+    assert profiler.all(kind='gpu')['f'] == [(0.0, 0.0), (0.0, 0.0), (4.0, 4.0), (0.0, 0.0), (8.0, 4.0), (0.0, 0.0), (0.0, 0.0), (4.0, 4.0), (12.0, 4.0)]
+
+def test_time():
+    profiler = Profiler()
+
+    def sleeper(s, profiler):
+        with profiler.watch('test'):
+            time.sleep(s)
+
+    for s in range(1, 10):
+        ss = 0.01 * s
+        ss = min(ss, 0.1 - ss)
+        sleeper(ss, profiler)
+
+    print(profiler.all('time'))
+
+    total = profiler.total(kind='time')
+    assert 0.05 <= total[0] and total[0] <= 0.06 
+    assert 0.25 <= total[1] and total[1] <= 0.27
 
 
