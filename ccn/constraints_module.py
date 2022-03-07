@@ -135,10 +135,12 @@ class ConstraintsModule(nn.Module):
             bool_pos_body = self.pos_body.bool()
             bool_neg_body = self.neg_body.bool()
 
-            rev_preds = 1 - preds
+            full_pos_body = 1 - preds
+            full_neg_body = preds
+
             if not body_mask is None:
-                masked_pos_body = rev_preds * (1 - body_mask)
-                masked_neg_body = preds * body_mask
+                full_pos_body = (1 - preds) * (1 - body_mask)
+                full_neg_body = preds * body_mask
 
         for c, lit in enumerate(self.heads):
             # slice positive and negative body preds
@@ -148,12 +150,8 @@ class ConstraintsModule(nn.Module):
 
             # body predictions (possibly masked) 
             with profiler.watch('body'):
-                if body_mask is None:
-                    pos_body = rev_preds[:, pos_where]
-                    neg_body = preds[:, neg_where]
-                else:
-                    pos_body = masked_pos_body[:, pos_where]
-                    neg_body = masked_neg_body[:, neg_where]
+                pos_body = full_pos_body[:, pos_where]
+                neg_body = full_neg_body[:, neg_where]
 
             # compute maximal inverted values
             with profiler.watch('candidate'):
