@@ -8,3 +8,4 @@ from .constraints_layer import ConstraintsLayer
 from .util import train, test, draw_classes
 from .slicer import Slicer
 from .profiler import Profiler
+from .detection_threshold import DetectionThreshold
