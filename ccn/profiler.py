@@ -40,6 +40,7 @@ def singleton(cls):
     constructor.__dict__.update(cls.__dict__)
     return constructor
 
+
 def no_cuda():
     return not torch.cuda.is_available()
 
@@ -54,6 +55,7 @@ def get_peak(device=None):
 def reset_peak(device=None):
     if no_cuda(): return None
     torch.cuda.reset_peak_memory_stats(device)
+
 
 # Manages the global cuda profiling data 
 @singleton
@@ -117,9 +119,23 @@ class Stats:
 
 # Profiler that records data from the manager
 class Profiler:
+    _enabled = True
+
     def __init__(self, watches = None):
         self.watches = dict() if watches is None else watches 
         self.manager = PeakMemoryManager()
+
+    @classmethod
+    def enable(cls):
+        cls._enabled = True 
+    
+    @classmethod
+    def disable(cls):
+        cls._enabled = False
+    
+    @classmethod
+    def enabled(cls):
+        return cls._enabled
 
     @classmethod
     def shared(cls):
@@ -198,17 +214,27 @@ class Profiler:
         Profiler.map_dict(update, self.watches)
         return kinder(result)
 
+def condition(cond):
+    def conditioned(f):
+        @functools.wraps(f)
+        def decorated(*args, **kwargs):
+            should = cond() if callable(cond) else cond
+            return f(*args, **kwargs) if should else None
+        return decorated 
+    return conditioned
 
 class Watch:
     def __init__(self, name, profiler):
         self.name = name 
         self.profiler = profiler
 
+    @condition(Profiler.enabled)
     def __enter__(self):
         self.start = get_allocated()
         self.tstart = datetime.datetime.now()
         self.profiler.manager.enter()
 
+    @condition(Profiler.enabled)
     def __exit__(self, a, b, c):
         self.peak = self.profiler.manager.exit()
         self.end = get_allocated()
@@ -326,5 +352,25 @@ def test_time():
     total = profiler.total(kind='time')
     assert 0.05 <= total[0] and total[0] <= 0.06 
     assert 0.25 <= total[1] and total[1] <= 0.27
+
+def test_disable():
+    profiler = Profiler() 
+
+    Profiler.enable()
+    with profiler.watch('test'):
+        time.sleep(0.05)
+    assert profiler.total('time')[1] > 0.05
+
+    Profiler.disable()
+    with profiler.watch('test'):
+        time.sleep(0.05)
+    assert profiler.total('time')[1] < 0.10
+
+    Profiler.enable()
+    with profiler.watch('test'):
+        time.sleep(0.05)
+    assert profiler.total('time')[1] > 0.10
+
+
 
 
