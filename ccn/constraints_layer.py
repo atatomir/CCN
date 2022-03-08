@@ -1,4 +1,3 @@
-from importlib_metadata import requires
 import numpy as np
 import pytest
 import json
