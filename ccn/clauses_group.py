@@ -53,10 +53,11 @@ class ClausesGroup:
         else:
             return cls(clauses)
 
-    def shift_add_n0(self):
+    def add_detection_label(self, forced=False):
         n0 = Literal(0, False)
         clauses = [clause.shift_add_n0() for clause in self]
-        return ClausesGroup(clauses)
+        forced = [Clause(f"0 n{x + 1}") for x in self.atoms()] if forced else []
+        return ClausesGroup(clauses + forced)
 
     def compacted(self):
         clauses = list(self.clauses)
@@ -183,22 +184,37 @@ def test_eq():
     assert ClausesGroup([c1, c2, c3]) == ClausesGroup([c3, c2, c1, c1])
     assert ClausesGroup([c1, c2]) != ClausesGroup([c3, c2, c1, c1])
 
-def test_shift_add_n0():
+def test_add_detection_label():
     before = ClausesGroup([
         Clause('0 n1 2 n3'),
         Clause('0'),
         Clause('n1'),
-        Clause('n2 5') 
+        Clause('n2 4 5') 
     ])
 
     after = ClausesGroup([
         Clause('n0 1 n2 3 n4'),
         Clause('n0 1'),
         Clause('n0 n2'),
-        Clause('n0 n3 6') 
+        Clause('n0 n3 5 6'),
     ])  
     
-    assert before.shift_add_n0() == after
+    after2 = ClausesGroup([
+        Clause('n0 1 n2 3 n4'),
+        Clause('n0 1'),
+        Clause('n0 n2'),
+        Clause('n0 n3 5 6'),
+        Clause('n1 0'),
+        Clause('n2 0'),
+        Clause('n3 0'),
+        Clause('n4 0'),
+        Clause('n5 0'),
+        Clause('n6 0')
+    ])  
+    
+    assert before.add_detection_label() == after
+    print(before.add_detection_label(True))
+    assert before.add_detection_label(True) == after2
 
 def test_resolution():
     c1 = Clause('1 2 3')

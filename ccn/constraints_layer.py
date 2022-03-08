@@ -185,7 +185,7 @@ def test_cuda_memory():
 
     constraints = ConstraintsGroup('../constraints/full')
     clauses = ClausesGroup.from_constraints_group(constraints)
-    clauses = clauses.shift_add_n0()
+    clauses = clauses.add_detection_label(False)
     layer = ConstraintsLayer.from_clauses_group(clauses, num_classes, 'rev-katz').to(device)
 
     with profiler.watch('complete'):
