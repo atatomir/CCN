@@ -17,7 +17,7 @@ class DetectionThreshold:
         self.threshold = threshold
 
     def cut(self, preds, mask):
-        return preds[mask, 1:]
+        return preds[mask, 1:], lambda updated: self.uncut(preds, mask, updated)
 
     def uncut(self, init, mask, preds):
         preds = torch.cat((init[mask, 0].reshape(-1, 1), preds), dim=1)
@@ -29,7 +29,7 @@ class DetectionThreshold:
     
     def cutter(self, preds):
         mask = preds[:, 0] > self.threshold
-        return lambda preds: self.cut(preds, mask), lambda updated: self.uncut(preds, mask, updated)
+        return lambda preds: self.cut(preds, mask)
 
 def test():
     dt = DetectionThreshold(0.2)
@@ -41,8 +41,8 @@ def test():
         [0.3, 0.2, 0.3, 0.4]
     ])
 
-    cut, uncut = dt.cutter(preds)
-    cut = cut(preds)
+    cut = dt.cutter(preds)
+    cut, uncut = cut(preds)
     assert (cut == preds[[1, 3], 1:]).all()
 
     ones = torch.ones_like(cut)
@@ -61,8 +61,8 @@ def test_none():
     preds = torch.zeros(100, 100)
     dt = DetectionThreshold(0.1)
 
-    cut, uncut = dt.cutter(preds)
-    cut = cut(preds)
+    cut = dt.cutter(preds)
+    cut, uncut = cut(preds)
     assert cut.shape == torch.Size([0, 99])
 
     other = torch.rand(0, 99)
@@ -72,12 +72,25 @@ def test_all():
     preds = torch.ones(100, 100)
     dt = DetectionThreshold(0.1)
 
-    cut, uncut = dt.cutter(preds)
-    cut = cut(preds)
+    cut = dt.cutter(preds)
+    cut, uncut = cut(preds)
     assert cut.shape == torch.Size([100, 99])
 
     other = torch.rand(100, 99)
     assert (uncut(other)[:, 1:] == other).all()
+
+def test_multicut():
+    dt = DetectionThreshold(0.1)
+    preds = torch.rand(100, 100)
+    goal = torch.rand(100, 100)
+
+    cut = dt.cutter(preds)
+    cut_preds, uncut_preds = cut(preds)
+    cut_goal, uncut_goal = cut(goal)
+
+    assert cut_preds.shape == cut_goal.shape 
+    assert (uncut_preds(cut_preds) == preds).all()
+    assert (uncut_goal(cut_goal) == goal).all()
 
 # TODO: Add cuda test
 
