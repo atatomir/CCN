@@ -23,6 +23,8 @@ class DetectionThreshold:
         preds = torch.cat((init[mask, 0].reshape(-1, 1), preds), dim=1)
         index = torch.tensor(list(range(init.shape[0])), device=mask.device)
         index = index[mask]
+
+        init = torch.cat((init[:, 0].reshape(-1, 1), torch.zeros_like(init[:, 1:])), dim=1)
         return init.index_copy(0, index, preds)
     
     def cutter(self, preds):
@@ -47,9 +49,9 @@ def test():
     updated = uncut(ones)
     
     expected = torch.tensor([ 
-        [0.1, 0.2, 0.3, 0.4],
+        [0.1, 0.0, 0.0, 0.0],
         [0.5, 1.0, 1.0, 1.0],
-        [0.0, 0.8, 0.9, 0.1],
+        [0.0, 0.0, 0.0, 0.0],
         [0.3, 1.0, 1.0, 1.0]
     ])
 
