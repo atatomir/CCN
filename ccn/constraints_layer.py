@@ -5,7 +5,7 @@ import math
 import torch
 from torch import nn
 
-from .constraints_module import ConstraintsModule, Engine
+from .constraints_module import ConstraintsModule
 from .constraints_group import ConstraintsGroup
 from .constraint import Constraint
 from .clauses_group import ClausesGroup 
@@ -60,13 +60,13 @@ class ConstraintsLayer(nn.Module):
     def from_minimal(self, tensor, init):
         return init.index_copy(1, self.atoms, tensor)
         
-    def forward(self, preds, goal=None, engine=Engine.ITERATIVE, slicer=None):
+    def forward(self, preds, goal=None, iterative=True, slicer=None):
         updated = self.to_minimal(preds)
         goal = None if goal is None else self.to_minimal(goal)
 
         modules = self.module_list if slicer is None else slicer.slice_modules(self.module_list)
         for module in modules:
-            updated = module(updated, goal=goal, engine=engine)
+            updated = module(updated, goal=goal, iterative=iterative)
 
         return self.from_minimal(updated, preds)
 
@@ -93,9 +93,8 @@ def run_layer(layer, preds, backward=False):
         extra = torch.rand_like(preds, requires_grad=True)
         preds = preds + extra
 
-    iter = layer(preds, engine=Engine.ITERATIVE)
-    tens = layer(preds, engine=Engine.TENSORS)
-    luka = layer(preds, engine=Engine.LUKASIEWICZ)
+    iter = layer(preds, iterative=True)
+    tens = layer(preds, iterative=False)
     assert torch.isclose(iter, tens).all()
 
     if backward:
@@ -198,7 +197,7 @@ def test_cuda_memory():
         with profiler.watch('sum'):
             summed = preds + extra
         with profiler.watch('layer'):
-            result = layer(summed, goal=goal, engine=Engine.ITERATIVE)
+            result = layer(summed, goal=goal, iterative=True)
         with profiler.watch('loss'):
             result = result.sum()
         with profiler.watch('backward'):
@@ -209,7 +208,7 @@ def test_cuda_memory():
     print(json.dumps(Profiler.shared().combined(), indent=4, sort_keys=True))
 
     results = profiler.total(kind='gpu')
-    assert results[0] <= 25
+    assert results[0] <= 10
 
 
 
