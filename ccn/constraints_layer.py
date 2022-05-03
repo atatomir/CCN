@@ -97,7 +97,6 @@ def run_layer(layer, preds, backward=False):
     tens = layer(preds, engine=Engine.TENSORS)
     luka = layer(preds, engine=Engine.LUKASIEWICZ)
     assert torch.isclose(iter, tens).all()
-    assert torch.isclose(iter, luka).all()
 
     if backward:
         sum = iter.sum() + tens.sum()

@@ -186,7 +186,7 @@ class ConstraintsModule(nn.Module):
 
             return updated
     
-    # Apply constraints with Lukasiewicz t-norm
+    # Apply constraints iteratively with Lukasiewicz t-norm
     @profiler.wrap
     def apply_lukasiewicz(self, preds, active_constraints=None, body_mask=None, in_bounds=None, out_bounds=False):
         batch, num, cons = self.dimensions(preds)
@@ -195,63 +195,44 @@ class ConstraintsModule(nn.Module):
         if not active_constraints is None: active_constraints = active_constraints.float()
         zeros = torch.zeros(batch, 1, device=device)
 
-        profiler = ConstraintsModule.profiler.branch('iter')
+        if in_bounds is None:
+            lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
+            ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
+        else: 
+            lb, ub = in_bounds
 
-        with profiler.watch('init'):
-            if in_bounds is None:
-                lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
-                ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
-            else: 
-                lb, ub = in_bounds
 
-        with profiler.watch('precompute'):
-            bool_pos_body = self.pos_body.bool()
-            bool_neg_body = self.neg_body.bool()
-
+        if not body_mask is None:
+            full_pos_body = (1 - preds) * (1 - body_mask)
+            full_neg_body = preds * body_mask
+        else:
             full_pos_body = 1 - preds
             full_neg_body = preds
 
-            if not body_mask is None:
-                full_pos_body = (1 - preds) * (1 - body_mask)
-                full_neg_body = preds * body_mask
-
         for c, lit in enumerate(self.heads):
-            # slice positive and negative body preds
-            with profiler.watch('where'):
-                pos_where = bool_pos_body[c]
-                neg_where = bool_neg_body[c]
-
             # body predictions (possibly masked) 
-            with profiler.watch('body'):
-                pos_body = full_pos_body[:, pos_where]
-                neg_body = full_neg_body[:, neg_where]
-
-            # compute maximal inverted values
-            with profiler.watch('candidate'):
-                candidate = torch.cat((zeros, pos_body, neg_body), dim=1)
-                candidate = 1 - candidate.max(dim=1).values
+            pos_body = torch.matmul(full_pos_body, self.pos_body[c])
+            neg_body = torch.matmul(full_neg_body, self.neg_body[c])
+            candidate = 1 - pos_body - neg_body
 
             # clear inactive constraints
-            with profiler.watch('active_cons'):
-                if not active_constraints is None:
-                    candidate = candidate * active_constraints[:, c]
+            if not active_constraints is None:
+                candidate = candidate * active_constraints[:, c]
 
             # update preds
-            with profiler.watch('min_max'):
-                if lit.positive:
-                    lb[lit.atom] = torch.maximum(lb[lit.atom], candidate)
-                else:
-                    ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
+            if lit.positive:
+                lb[lit.atom] = torch.maximum(lb[lit.atom], candidate)
+            else:
+                ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
 
-        with profiler.watch('lb_ub'):
-            if out_bounds:
-                return lb, ub
+        if out_bounds:
+            return lb, ub
 
-            lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
-            lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
-            updated = torch.maximum(lb, torch.minimum(ub, preds))
+        lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
+        lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
+        updated = torch.maximum(lb, torch.minimum(ub, preds))
 
-            return updated
+        return updated
 
     @profiler.wrap
     def apply(self, preds, engine):
@@ -309,7 +290,6 @@ def run_cm(cm, preds, goal=None, device='cpu'):
     tens = cm(preds, goal=goal, engine=Engine.TENSORS)
     luka = cm(preds, goal=goal, engine=Engine.LUKASIEWICZ)
     assert torch.isclose(iter, tens).all()
-    assert torch.isclose(iter, luka).all()
     return iter.cpu()
 
 def _test_no_goal(device):
