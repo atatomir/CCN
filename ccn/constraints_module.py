@@ -3,12 +3,18 @@ import numpy as np
 import torch 
 import pytest
 import json
+from enum import Enum
 
 from torch import nn
 from .literal import Literal
 from .constraint import Constraint
 from .constraints_group import ConstraintsGroup
 from .profiler import Profiler
+
+class Engine(Enum):
+    TENSORS = 1 
+    ITERATIVE = 2
+    LUKASIEWICZ = 3
 
 class ConstraintsModule(nn.Module):
     profiler = Profiler.shared().branch('cm')
@@ -179,41 +185,114 @@ class ConstraintsModule(nn.Module):
             updated = torch.maximum(lb, torch.minimum(ub, preds))
 
             return updated
+    
+    # Apply constraints with Lukasiewicz t-norm
+    @profiler.wrap
+    def apply_lukasiewicz(self, preds, active_constraints=None, body_mask=None, in_bounds=None, out_bounds=False):
+        batch, num, cons = self.dimensions(preds)
+        device = preds.device
+
+        if not active_constraints is None: active_constraints = active_constraints.float()
+        zeros = torch.zeros(batch, 1, device=device)
+
+        profiler = ConstraintsModule.profiler.branch('iter')
+
+        with profiler.watch('init'):
+            if in_bounds is None:
+                lb = [torch.zeros(preds.shape[0], device=device) for i in range(preds.shape[1])]
+                ub = [torch.ones(preds.shape[0], device=device) for i in range(preds.shape[1])]
+            else: 
+                lb, ub = in_bounds
+
+        with profiler.watch('precompute'):
+            bool_pos_body = self.pos_body.bool()
+            bool_neg_body = self.neg_body.bool()
+
+            full_pos_body = 1 - preds
+            full_neg_body = preds
+
+            if not body_mask is None:
+                full_pos_body = (1 - preds) * (1 - body_mask)
+                full_neg_body = preds * body_mask
+
+        for c, lit in enumerate(self.heads):
+            # slice positive and negative body preds
+            with profiler.watch('where'):
+                pos_where = bool_pos_body[c]
+                neg_where = bool_neg_body[c]
+
+            # body predictions (possibly masked) 
+            with profiler.watch('body'):
+                pos_body = full_pos_body[:, pos_where]
+                neg_body = full_neg_body[:, neg_where]
+
+            # compute maximal inverted values
+            with profiler.watch('candidate'):
+                candidate = torch.cat((zeros, pos_body, neg_body), dim=1)
+                candidate = 1 - candidate.max(dim=1).values
+
+            # clear inactive constraints
+            with profiler.watch('active_cons'):
+                if not active_constraints is None:
+                    candidate = candidate * active_constraints[:, c]
+
+            # update preds
+            with profiler.watch('min_max'):
+                if lit.positive:
+                    lb[lit.atom] = torch.maximum(lb[lit.atom], candidate)
+                else:
+                    ub[lit.atom] = torch.minimum(ub[lit.atom], 1 - candidate)
+
+        with profiler.watch('lb_ub'):
+            if out_bounds:
+                return lb, ub
+
+            lb, ub = torch.stack(lb, dim=1), torch.stack(ub, dim=1)
+            lb, ub = torch.minimum(lb, ub), torch.maximum(lb, ub)
+            updated = torch.maximum(lb, torch.minimum(ub, preds))
+
+            return updated
 
     @profiler.wrap
-    def apply(self, preds, iterative):
-        if iterative:
-            return self.apply_iter(preds)
-        else:
+    def apply(self, preds, engine):
+        if engine == Engine.TENSORS:
             return self.apply_tensor(preds)
+        elif engine == Engine.ITERATIVE:
+            return self.apply_iter(preds)
+        else: 
+            return self.apply_lukasiewicz(preds)
+
 
     @profiler.wrap 
-    def apply_goal(self, preds, goal, iterative):
+    def apply_goal(self, preds, goal, engine):
         full_body, unsat_head = self.active_constraints(goal)
         body_mask = goal
-        
-        if iterative:
-            bounds = self.apply_iter(preds, active_constraints=full_body, out_bounds=True)
-            updated = self.apply_iter(preds, active_constraints=unsat_head, body_mask=body_mask, in_bounds=bounds)
-        else:
+
+        if engine == Engine.TENSORS:
             updated = self.apply_tensor(preds, active_constraints=full_body)
             updated = self.apply_tensor(updated, active_constraints=unsat_head, body_mask=body_mask) 
+        elif engine == Engine.ITERATIVE:
+            bounds = self.apply_iter(preds, active_constraints=full_body, out_bounds=True)
+            updated = self.apply_iter(preds, active_constraints=unsat_head, body_mask=body_mask, in_bounds=bounds)
+        else: 
+            bounds = self.apply_lukasiewicz(preds, active_constraints=full_body, out_bounds=True)
+            updated = self.apply_lukasiewicz(preds, active_constraints=unsat_head, body_mask=body_mask, in_bounds=bounds)
 
         return updated
         
     @profiler.wrap
-    def forward(self, preds, goal = None, iterative=True):
+    def forward(self, preds, goal = None, engine=Engine.ITERATIVE):
         if len(preds) == 0 or len(self.atoms) == 0:
             return preds
 
         updated = self.to_minimal(preds)
 
         if goal is None:
-            updated = self.apply(updated, iterative=iterative)
+            updated = self.apply(updated, engine=engine)
             return self.from_minimal(updated, preds)
         else:
             goal = self.to_minimal(goal)
-            updated = self.apply_goal(updated, goal=goal, iterative=iterative)
+            updated = self.apply_goal(updated, goal=goal, engine=engine)
             return self.from_minimal(updated, preds)
 
 def test_symmetric():
@@ -226,9 +305,11 @@ def run_cm(cm, preds, goal=None, device='cpu'):
     cm, preds = cm.to(device), preds.to(device)
     if not goal is None: goal = goal.to(device)
 
-    iter = cm(preds, goal=goal, iterative=True)
-    tens = cm(preds, goal=goal, iterative=False)
+    iter = cm(preds, goal=goal, engine=Engine.ITERATIVE)
+    tens = cm(preds, goal=goal, engine=Engine.TENSORS)
+    luka = cm(preds, goal=goal, engine=Engine.LUKASIEWICZ)
     assert torch.isclose(iter, tens).all()
+    assert torch.isclose(iter, luka).all()
     return iter.cpu()
 
 def _test_no_goal(device):
@@ -335,11 +416,11 @@ def test_lb_ub():
     updated = run_cm(cm, preds)
     assert (updated[:, 0] == torch.tensor([0.6, 0.65, 0.7] * 2)).all()
 
-def _test_time(iterative, device):
+def _test_time(engine, device):
     group = ConstraintsGroup('../constraints/full')
     cm = ConstraintsModule(group, 41).to(device)
     preds = torch.rand(5000, 41, device=device)
-    cm(preds, iterative=iterative)
+    cm(preds, engine=engine)
 
 def test_time_iterative_cpu():
     for i in range(10):

@@ -63,6 +63,7 @@ def draw_classes(model, draw=None, path=None, device='cpu'):
 
     classes = preds.shape[1]
     fig, ax = plt.subplots(1, classes)
+    fig.tight_layout()
     for i, ax in enumerate(ax):
         image = preds[:, i].view((len(dots), len(dots))).to('cpu')
         ax.imshow(
