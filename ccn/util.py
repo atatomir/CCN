@@ -56,7 +56,7 @@ def test(dataloader, model, clayer, loss_fn, device):
     return test_loss, correct
 
 def draw_classes(model, draw=None, path=None, device='cpu'):
-    dots = np.arange(0., 1., 0.01, dtype = "float32")
+    dots = np.arange(0., 1., 0.002, dtype = "float32")
     grid = torch.tensor([(x, y) for y in dots for x in dots]).to(device)
     model = model.to(device)
     preds = model(grid).detach()
@@ -65,13 +65,23 @@ def draw_classes(model, draw=None, path=None, device='cpu'):
     fig, ax = plt.subplots(1, classes)
     for i, ax in enumerate(ax):
         image = preds[:, i].view((len(dots), len(dots))).to('cpu')
-        ax.imshow(
+        # ax.imshow(
+        #     image, 
+        #     cmap='hot', 
+        #     interpolation='nearest', 
+        #     origin='lower', 
+        #     extent=(0., 1., 0., 1.),
+        #     vmin=0.,
+        #     vmax=1.
+        # )
+        ax.contourf(
+            dots,
+            dots,
             image, 
             cmap='hot', 
-            interpolation='nearest', 
             origin='lower', 
             extent=(0., 1., 0., 1.),
-            vmin=0.,
+            vmin=0.1,
             vmax=1.
         )
         if draw != None: draw(ax, i)    

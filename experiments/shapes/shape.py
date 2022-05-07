@@ -32,7 +32,29 @@ class Shape:
     if not full: 
       image = self.find_borders(image)
 
-    ax.imshow(image, alpha=image * 0.6, cmap='winter', interpolation='nearest', origin='lower', extent=(0., 1., 0., 1.))
+    alpha = image 
+    alpha[alpha > 0.5] = 0.6
+    alpha[alpha < 0.5] = 0.
+
+    ax.imshow(
+      image, 
+      alpha=alpha, 
+      cmap='winter', 
+      interpolation='nearest', 
+      origin='lower', 
+      extent=(0., 1., 0., 1.),
+      vmin=0.5
+    )
+
+    # f = ax.contourf if full else ax.contour
+    # f(
+    #   dots, dots,
+    #   image, 
+    #   cmap='winter', 
+    #   origin='lower', 
+    #   extent=(0., 1., 0., 1.),
+    #   vmin=0.5
+    # )
 
 
 class FunctionalShape(Shape):
