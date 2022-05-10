@@ -10,7 +10,7 @@ from ccn import ConstraintsLayer, train, test, draw_classes
 from shapes import ShapeDataset
 
 class Experiment:
-    def __init__(self, name, model, shapes, constraints, points = 1000):
+    def __init__(self, name, model, shapes, constraints, points = 2500, batch_size=2500):
         self.name = name
         self.model = model 
         self.shapes = shapes 
@@ -18,17 +18,16 @@ class Experiment:
 
         # Build dataset
         train_data = ShapeDataset(shapes, points)
-        test_data = ShapeDataset(shapes, points // 10)
+        test_data = ShapeDataset(shapes, points)
 
-        self.train_dataloader = DataLoader(train_data, batch_size = 64)
-        self.test_dataloader = DataLoader(test_data, batch_size = 64)
+        self.train_dataloader = DataLoader(train_data, batch_size=batch_size)
+        self.test_dataloader = DataLoader(test_data, batch_size=batch_size)
 
         # Build constraints layer & optimizer
         self.clayer = ConstraintsLayer(constraints, len(shapes))
         self.loss_fn = nn.BCELoss()
         
-        learning_rate = 3e-2
-        # learning_rate = 1e-2
+        learning_rate = 1e-2
         self.optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas = (0.9, 0.999))
 
     @classmethod
@@ -55,21 +54,29 @@ class Experiment:
             for i, rate in enumerate(correct):
                 sw.add_scalar(f'Accuracy/test (label {i})', rate, t)
             self.test_loss = loss
+        
+            if t % 100 == 0:
+                self.draw_results(sw=sw, epoch=t)
 
         print("Done!")
-        self.draw_results()
+        self.draw_results(sw=sw, epoch=len(ratios))
         sw.close()
 
     def experiment_path(self, dir):
         return f"{dir + self.name}-{self.test_loss:.5}-{int(time.time())}"
 
-    def draw_results(self, path=None):
+    def draw_results(self, path=None, sw=None, epoch=0):
         path1 = path + '.png' if path != None else None 
         path2 = path + "-constrained.png" if path != None else None
 
         full = False
-        draw_classes(self.model, draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path1)
-        draw_classes(nn.Sequential(self.model, self.clayer), draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path2)
+        
+        prev = draw_classes(self.model, draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path1)
+        after = draw_classes(nn.Sequential(self.model, self.clayer), draw=(lambda ax, i: self.shapes[i].plot(ax, full=full)), path=path2)
+        if not sw is None:
+            sw.add_figure('previous', prev, epoch)
+            sw.add_figure('after', after, epoch)
+
 
     def save(self, dir='./'):
         path = self.experiment_path(dir)

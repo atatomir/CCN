@@ -55,14 +55,14 @@ def test(dataloader, model, clayer, loss_fn, device):
     print(f" Avg loss: {test_loss:>8f} \n")
     return test_loss, correct
 
-def draw_classes(model, draw=None, path=None, device='cpu'):
-    dots = np.arange(0., 1., 0.002, dtype = "float32")
+def draw_classes(model, draw=None, path=None, device='cpu', show=False):
+    dots = np.arange(0., 1., 0.001, dtype = "float32")
     grid = torch.tensor([(x, y) for y in dots for x in dots]).to(device)
     model = model.to(device)
     preds = model(grid).detach()
 
     classes = preds.shape[1]
-    fig, ax = plt.subplots(1, classes)
+    fig, ax = plt.subplots(1, classes, figsize=(20, 20 * classes))
     for i, ax in enumerate(ax):
         image = preds[:, i].view((len(dots), len(dots))).to('cpu')
         # ax.imshow(
@@ -86,11 +86,14 @@ def draw_classes(model, draw=None, path=None, device='cpu'):
         )
         if draw != None: draw(ax, i)    
 
-    if path == None:
+    if show:
         plt.show()
-    else:
+
+    if not path is None:
         plt.savefig(path)
         plt.close()
+
+    return fig
 
 
 
