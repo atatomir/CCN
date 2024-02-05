@@ -74,6 +74,15 @@ class Rectangle(Shape):
     x0, x1 = self.x 
     y0, y1 = self.y 
     return x0 <= x and x <= x1 and y0 <= y and y <= y1
+  
+  def get_width(self):
+    return abs(self.x[0] - self.x[1])
+  
+  def get_height(self):
+    return abs(self.y[0] - self.y[1])
+  
+  def get_left_low_corner(self):
+    return (min(self.x), min(self.y))
 
 class HalfPlane(Shape):
   def __init__(self, a, b, c):
